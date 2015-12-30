@@ -1,0 +1,76 @@
+[File Count]
+Count=1
+[Device]
+Device=69P48
+ReservedRAM=13
+[OSC]
+Source=2
+Frequency=4000.000
+[OSCX]
+Frequency=455.000
+[Files]
+File0=FireLight_v2.asm|3 26 1032 26 349
+OpenFileCounts=1
+[ProjectFiles]
+File0=FireLight_v2.asm
+[Watch0]
+Count=8
+Watch0=SYSTEM_STATE 0
+Watch1=BTN_PRE_STA 0
+Watch2=BTN_PRESS_CNT1 0
+Watch3=PRESS_DURATION 0
+Watch4=SELF_STATE 0
+Watch5=ALARM_STATE 0
+Watch6=ALREADY_ENTER 0
+Watch7=BAT_STATE 0
+Watch8=CNT1_EMERGENCY 0
+Watch9=CNT2_EMERGENCY 0
+Watch10=CHN6_FINAL_RET1 0
+Watch11=CHN6_FINAL_RET2 0
+[Watch1]
+Count=0
+[Watch2]
+Count=0
+[Watch3]
+Count=0
+[Break]
+Buffer=0
+Trigger=0
+Count=1
+Break0=0 1054 1
+Break1=0 771 1
+[MultiBreakpoint]
+bSet=0
+[Trig]
+Count=0
+[Trace]
+Type=0
+Begin=0
+End=0
+[ProjectInfo]
+ProjectInfo_0=FireLightV2
+ProjectInfo_1=
+ProjectInfo_2=69P48
+ProjectInfo_3=Internal, 4000.000KHz
+ProjectInfo_4=
+ProjectInfo_5=2015-12-19, 19:18:06
+ProjectInfo_6=2015-12-27, 22:06:34
+ProjectInfo_7=
+ProjectInfo_8=
+ProjectInfo_9=D:\Projects\FireLight\ProjectV2\FireLight_v2.obj
+ProjectInfo_10=0x0DF1
+ProjectInfo_11=
+[ProjectMode]
+Mode=1
+[SimulationMode]
+Mode=0
+CodeOptionHigh=0
+CodeOptionLow=0
+LcdFile=
+LcdFlag=0 0 0 0 0
+LcdRun=0 0 0 0 0
+VirtualDeviceFile=led.vd
+VirtualDevice=0 0 0 0 0 0
+VirtualOscilloscopeFlag=2 2 2 2 6
+VirtualOscilloscopePin=:::      
+VirtualOscilloscope=0 0 0 0 0
