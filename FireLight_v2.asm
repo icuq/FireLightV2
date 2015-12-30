@@ -118,7 +118,7 @@ F_TIME 		EQU 	36H 		;bit0 = 1, 1秒到;
 					;bit2 = 1, 1年到; 
 					;bit3 = 1, 1分钟到。
 
-CNT0_8MS 	EQU 	37H	 	;CNT1_8MS, CNT0_8MS组成的8BIT数据达到125时，即Timer0产生125次中断后，表示1S计时已到
+CNT0_8MS 	EQU 	37H	 	;CNT1_8MS, CNT0_8MS组成的8bit数据达到125时，即Timer0产生125次中断后，表示1S计时已到
 CNT1_8MS 	EQU 	38H 		;所以，初始化CNT1_8MS=07H, CNT0_8MS=0DH
 
 SEC_CNT0	EQU	39H		;SEC_CNT0/1/2 以秒为单位计时
