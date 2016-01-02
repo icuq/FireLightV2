@@ -817,7 +817,7 @@ MAIN_LOOP:
 	
 	CALL	KEY_PROCESS		;[按键扫描]  按键扫描
 	CALL	SELF_CHK_STATE		;[自检状态]  根据系统运行时长与按键时长，置"停电"，"月检"，"年检"标志位
-	CALL	SELF_CHK_PROCESS	;[系统自检]  根据自检标志位，进行自检
+	CALL	SELF_CHK_PROCESS	;[系统自检]  根据自检标志位，进行自检，只判断放电时长是否够长
 
 	CALL	BAT_STATE_CHK		;[电池状态]  检测电池状态，并置相应标志位
 	CALL	LIGHT_STATE_CHK		;[光源状态]  光源状态检测，并置相应标志位
@@ -997,9 +997,6 @@ REGISTER_INITIAL:
 	LDI	CNT0_CHARGE,	0FH	;还应充电多长时间，初始值为20小时，即20 * 60 =1200分钟(0x4B0)
 	LDI	CNT1_CHARGE,	0AH
 	LDI	CNT2_CHARGE,	04H
-
-	;Beep
-	;LDI	BEEP_CTL,	01H	;产生蜂鸣
 	
 	LDI 	IRQ,		00H
 	LDI 	IE,		1110B 	;打开ADC,Timer0,Timer1 中断
@@ -1453,7 +1450,12 @@ BAT_STATE_CHK:
 
 BAT_OPEN:
 	ORIM	BAT_STATE,	0001B	;置充电回路开路标志位
-	ORIM	ALARM_STATE,	0001B	;置充电回路开路故障标志位	
+	ORIM	ALARM_STATE,	0001B	;置充电回路开路故障标志位
+
+	ADI	SELF_STATE,	1000B	;判断是否处于手动自检状态
+	BA3	BAT_STATE_CHK_END
+	ORIM	BEEP_CTL,	0001B	;在手动自检状态下，检测到充电回路开路故障，此时蜂鸣器应每50秒蜂鸣2秒
+	
 	JMP	BAT_STATE_CHK_END
 
 BAT_FULL:
@@ -1491,6 +1493,10 @@ PROCESS_LIGHT:
 
 ERROR_LIGHT:
 	ORIM	ALARM_STATE,	0010B	;置光源故障标志位
+	
+	ADI	SELF_STATE,	1000B	;判断当前是否处于手动自检状态
+	BA3	PROCESS_LIGHT_END
+	ORIM	BEEP_CTL,	0001B	;如果手动自检状态下发生光源故障，则蜂鸣器应每50秒蜂鸣2秒
 
 PROCESS_LIGHT_END:
 	RTNI
@@ -1561,7 +1567,7 @@ GREEN_OFF:
 
 GREEN_1HZ:	
 	ADI	F_168MS,	01H	;判断是否到了一个新168MS
-	BA0 	TIPS_PROCESS_END	;还没有到168MS，直接跳至结束
+	BA0 	BEEP_PROCESS		;还没有到168MS，直接跳至结束;;;;
 	
 	ADIM	CNT_LED_GREEN,	01H
 	SBI	CNT_LED_GREEN,	03H
@@ -1573,7 +1579,7 @@ GREEN_1HZ:
 
 GREEN_3HZ:	
 	ADI	F_168MS,	01H	;判断是否到了一个新168MS
-	BA0 	TIPS_PROCESS_END
+	BA0 	BEEP_PROCESS		;;;
 	EORIM	PORTC,		0010B
 	
 ;--------------------------------------------------------------------------
@@ -1614,16 +1620,22 @@ ALARM_TIME_NOT_ENOUGH:
 	BAZ	OFF_LED_YELLOW		;没有出现放电时间不足之故障，则跳转
 	
 	ORIM	PORTE,		0001B	;黄灯长亮
-	JMP	TIPS_PROCESS_END
+	JMP	BEEP_PROCESS		;;;
 
 OFF_LED_YELLOW:
 	LDA	ALARM_STATE		;如果没有任何故障，则关闭黄灯
-	BNZ	TIPS_PROCESS_END
+	BNZ	BEEP_PROCESS		;;;
 	ANDIM	PORTE,		1110B
 
 ;--------------------------------------------------------------------------
 ;蜂鸣器的处理
 BEEP_PROCESS:
+	LDA	ALARM_STATE
+	BNZ	THERE_ARE_ALARM		;如果有电池、光源或是放电时长不足的故障，则跳转
+
+	JMP	BEEP_OFF		;如果没有故障，则跳转
+
+THERE_ARE_ALARM:
 	LDA	BEEP_CTL
 	BA0	BEEP_ON_GOING		;如果当前蜂鸣器应提示故障，则跳转
 	JMP	BEEP_OFF		;如果当前没有故障需由蜂鸣器做出提示，则跳转
@@ -1978,6 +1990,11 @@ SCP_MONTH_1S:
 	BNC	SELF_CHK_PROCESS_END	;如果电池还未耗尽，则跳转
 
 	ORIM	ALARM_STATE,	0100B	;置放电时长不足标志位
+
+	ADI	SELF_STATE,	1000B
+	BA3	SCP_ARRIVE_120S
+
+	ORIM	BEEP_CTL,	0001B	;如果在手动月检状态下，检测到放电时长不足120秒，则蜂鸣器应每50秒蜂鸣2秒
 	
 ;---------------------------------------------------------------------------
 
@@ -2036,6 +2053,12 @@ SCP_YEAR_1S:
 	BC	SCP_ARRIVE_30MIN
 
 	ORIM	ALARM_STATE,	0100B	;置应急放电时长不足标志位
+
+	ADI	SELF_STATE,	1000B
+	BA3	SCP_ARRIVE_30MIN
+
+	ORIM	BEEP_CTL,	0001B	;如果在手动年检状态下，检测到放电时长不足30分钟，则蜂鸣器应每50秒蜂鸣2秒
+
 	
 ;---------------------------------------------------------------------------
 
