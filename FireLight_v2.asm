@@ -54,9 +54,9 @@ PDCR		EQU	1BH		;PortD 控制寄存器
 PECR		EQU	1CH		;PortE 控制寄存器
 
 					;1DH Reserved
-					
+
 WDT		EQU	1EH		;Whichdog timer control
-					
+
 
 PWMC0		EQU	20H		;PWM0 控制寄存器
 PWMC1		EQU	21H		;PWM1 控制寄存器
@@ -76,7 +76,7 @@ PWMD11		EQU	2AH		;PWM1 占空比控制寄存器中4位
 PWMD12		EQU	2BH		;PWM1 占空比控制寄存器高4位
 
 					;2CH Reserved
-					
+
 AD_RET0		EQU	2DH		;ADC 转换结果低2位
 AD_RET1		EQU	2EH		;ADC 转换结果中4位
 AD_RET2		EQU	2FH		;ADC 转换结果高4位
@@ -198,7 +198,17 @@ ALARM_STATE	EQU	5CH		;bit0 = 1, 表示电池故障(开路或短路)
 					;bit1 = 1, 表示光源故障(开路或短路)
 					;bit2 = 1, 表示自检放电时间不足
 
+BEEP_CTL	EQU	5DH		;bit0 = 1, 表示产生了某些故障，蜂鸣器应当每隔50秒产生持续2秒的蜂鸣					
+					;bit1 = 1, 表示2秒已到，此时应禁能TCTL1.3
+					;bit2 = 1, 表示50秒已到，此时应使能TCTL1.3
+					;bti3 = 0, 表示正在对2秒进行计时，bit 3 = 1, 表示正在对50秒进行计时
 
+CNT_2S		EQU	6BH		;计数器，用于计时2秒
+CNT0_50S	EQU	6CH		;计数器，用于计时50秒
+CNT1_50S	EQU	6DH	
+
+ALREADY_BEEP	EQU	6EH		;bit0 = 1, 表示已经使能TIMER1
+					
 CNT_LED_YELLOW	EQU	5FH		;计数器，供翻转黄灯输出使用，计时单位为168MS
 
 
@@ -390,6 +400,30 @@ J_1S:
 	ORIM	F_1S,		0001B	;为应急功能提供 "1s 到"标志
 	ORIM	FLAG_SIMU_EMER,	0010B	;为手动自检提供 "1s 到"标志
 
+BEEP_TIMER:
+	LDA	BEEP_CTL		;判断当前正在计时2秒还是50秒
+	BA3	CNTING_50S		;如果正在对50秒进行计时，则跳转
+CNTING_2S:
+	ADIM	CNT_2S,		01H	;2秒计数器每秒累加1
+	BA1	J_2S			;如果2秒已到，则跳转
+	JMP	J_MINUTE
+J_2S:
+	LDI	CNT_2S,		00H	;清零2秒计数器
+	LDI	CNT0_50S,	01H	;重置50秒计数器
+	LDI	CNT1_50S,	03H
+	ORIM	BEEP_CTL,	0010B	;置"2秒 到"标志	
+	JMP	J_MINUTE
+CNTING_50S:
+	SBIM	CNT0_50S,	01H	;50秒计数器每秒减1
+	LDI	TBR,		00H
+	SBCM	CNT1_50S
+	BC	J_MINUTE		;如果还没到50秒，则跳转
+
+	LDI	CNT_2S,		00H	;清零2秒计数器
+	LDI	CNT0_50S,	01H	;重置50秒计数器
+	LDI	CNT1_50S,	03H
+	ORIM	BEEP_CTL,	0100B	;置"50s 到"标志
+	
 J_MINUTE:
 	SBIM	CNT0_1MINUTE,	01H
 	LDI	TBR,		00H
@@ -775,6 +809,8 @@ RESET:
 	
 	CALL	CHARGE_BAT_ENABLE	;上电后，即开始对电池进行充电
 
+	LDI	TCTL1,		00H	;关闭Timer1，停止蜂鸣
+
 MAIN_LOOP:
 	CALL	CHARGE_BAT_CTRL		;[充电控制]  根据主电源状态、待充电时长、电池是否充满标志位等进行电池充电控制
 	CALL	EMERGENCY_CTRL		;[放电控制]  主电源停电后的应急放电控制，退出应急状态时，计算此次应急放电时长
@@ -845,6 +881,9 @@ REGISTER_INITIAL:
 
 	LDI 	CNT0_8MS,	0DH 	;定时1s
 	LDI 	CNT1_8MS,	07H 	;定时1s
+
+	LDI	CNT0_50S,	01H	;Beep定时50s
+	LDI	CNT1_50S,	03H
 	
 	LDI	SEC_CNT0,	0FH	;SEC_CNT0/1/2 初始化为E10H - 1，即3600 -1
 	LDI	SEC_CNT1,	00H
@@ -868,7 +907,7 @@ REGISTER_INITIAL:
 	LDI 	TM1,		03H 	;设置TIMER0 预分频为/32
 	LDI 	TL1,		08H
 	LDI 	TH1,		0FH 	;设置中断频率约4kHz
-	LDI	TCTL1,		00H	;关闭Timer1
+	LDI	TCTL1,		08H	;上电蜂鸣一声，之后会关闭
 
 	;I/O 口初始化
 	LDI 	PORTA,		00H
@@ -958,6 +997,9 @@ REGISTER_INITIAL:
 	LDI	CNT0_CHARGE,	0FH	;还应充电多长时间，初始值为20小时，即20 * 60 =1200分钟(0x4B0)
 	LDI	CNT1_CHARGE,	0AH
 	LDI	CNT2_CHARGE,	04H
+
+	;Beep
+	;LDI	BEEP_CTL,	01H	;产生蜂鸣
 	
 	LDI 	IRQ,		00H
 	LDI 	IE,		1110B 	;打开ADC,Timer0,Timer1 中断
@@ -1580,6 +1622,58 @@ OFF_LED_YELLOW:
 	ANDIM	PORTE,		1110B
 
 ;--------------------------------------------------------------------------
+;蜂鸣器的处理
+BEEP_PROCESS:
+	LDA	BEEP_CTL
+	BA0	BEEP_ON_GOING		;如果当前蜂鸣器应提示故障，则跳转
+	JMP	BEEP_OFF		;如果当前没有故障需由蜂鸣器做出提示，则跳转
+	
+BEEP_ON_GOING:
+	LDA	ALREADY_BEEP	
+	BA0	CHK_2S_OR_50S		;如果不是第一次进入，则跳转
+
+	ORIM	TCTL1,		1000B	;使能Timer1
+	ORIM	ALREADY_BEEP,	0001B	;置已经使能Timer1标志位
+	LDI	CNT_2S,		00H	;从0开始2秒计时
+	ANDIM	BEEP_CTL,	0111B	;转入2秒计时
+
+CHK_2S_OR_50S:
+	LDA	BEEP_CTL
+	BA3	BEEP_CHK_50S		;如果当前正在对50进行计时，则跳转
+
+BEEP_CHK_2S:
+	ADI	BEEP_CTL,	01H	;判断2秒是否已经到了
+	BA1	TIPS_PROCESS_END
+
+	ANDIM	BEEP_CTL,	1101B	;清2秒到标志
+	ANDIM	TCTL1,		0111B	;如果2秒已经到了，则应禁能Timer1，让蜂鸣器停止蜂鸣，由2秒计时转入计时50秒
+
+	LDI	CNT0_50S,	01H	;重置50秒计数器
+	LDI	CNT1_50S,	03H
+
+	ORIM	BEEP_CTL,	1000B	;转入50秒计时
+	JMP	TIPS_PROCESS_END
+	
+BEEP_CHK_50S:
+	ADI	BEEP_CTL,	0100B	;判断50秒计时是事已经到了
+	BA2	TIPS_PROCESS_END
+
+	ANDIM	BEEP_CTL,	1011B	;清50秒到标志
+	ORIM	TCTL1,		1000B	;让蜂鸣器开始蜂鸣
+
+	LDI	CNT_2S,		00H	;重置2秒计数器
+
+	ANDIM	BEEP_CTL,	0111B	;转入2秒计时
+	JMP	TIPS_PROCESS_END
+
+BEEP_OFF:
+	ANDIM	TCTL1,		0111B	;让蜂鸣器停止蜂鸣
+
+	LDI	BEEP_CTL,	00H
+	LDI	ALREADY_BEEP,	00H	;清除已进入蜂鸣标志
+	LDI	CNT_2S,		00H	;重置2秒计数器
+	LDI	CNT0_50S,	01H	;重置50秒计数器
+	LDI	CNT1_50S,	03H
 
 TIPS_PROCESS_END:
 	ANDIM	F_168MS,	1110B	;清除168MS标志
