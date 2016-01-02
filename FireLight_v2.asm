@@ -353,7 +353,7 @@ DET7_CT		EQU	3FH		;ADC 通道7 转换结果个数
 	JMP	RESET			;RESET ISP
 	JMP	ADC_ISP			;ADC INTERRUPT ISP
 	JMP	TIMER0_ISP		;TIMER0 ISP
-	RTNI				;TIMER1 ISP
+	JMP	TIMER1_ISP		;TIMER1 ISP
 	RTNI				;PORTB/D ISP
 
 
@@ -434,10 +434,26 @@ J_YEAR:
 	ORIM 	F_TIME,		0100B 	;设置 "1年到" 标志
 
 TIMER0_ISP_END:
-	LDI 	IE,		1100B 	;打开ADC,Timer0 中断
+	LDI 	IE,		1110B 	;打开ADC,Timer0,Timer1 中断
 	LDA 	AC_BAK,		00H 	;恢复AC 值
 	RTNI
 
+
+;*****************************************************
+;Timer1 中断服务程序
+;Timer1已配置为每秒产生约4k次中断
+;
+;*****************************************************
+TIMER1_ISP:
+	STA 	AC_BAK,		00H 	;备份AC 值
+	ANDIM 	IRQ,		1101B 	;清TIMER1 中断请求标志
+
+	EORIM	PORTC,		1000B	;翻转PC.3，产生蜂鸣
+	
+TIMER1_ISP_END:
+	LDI 	IE,		1110B 	;打开ADC,Timer0,Timer1 中断
+	LDA 	AC_BAK,		00H 	;恢复AC 值
+	RTNI
 
 ;*****************************************************
 ;ADC 中断服务程序
@@ -738,7 +754,7 @@ NEXT_CHN7:
 ADC_ISP_END:
 	ORIM 	ADCCFG,		1000B 	;启动A/D 转换
 
-	LDI 	IE,		1100B 	;打开ADC,Timer0 中断
+	LDI 	IE,		1110B 	;打开ADC,Timer0,Timer1 中断
 	LDA 	AC_BAK,		00H 	;取出AC 值
 	RTNI
 
@@ -839,7 +855,20 @@ REGISTER_INITIAL:
 	LDI	HOUR_CNT2,	02H
 
 	LDI	MONTH_CNT,	0BH	;MONTH_CNT 初始化为12 -1 个月
-		
+
+	;TIMER1 初始化
+	;
+	;  fosc=4M, fsys=4M/4=1M
+	;
+	;  fsys=1M                 31250Hz                   3906.25Hz
+	;           -------------            -------------
+	;  -------->| Prescaler |----------->|  Counter  |----------->
+	;           -------------            -------------
+	;               (32)                     (8)		
+	LDI 	TM1,		03H 	;设置TIMER0 预分频为/32
+	LDI 	TL1,		08H
+	LDI 	TH1,		0FH 	;设置中断频率约4kHz
+	LDI	TCTL1,		00H	;关闭Timer1
 
 	;I/O 口初始化
 	LDI 	PORTA,		00H
@@ -931,7 +960,7 @@ REGISTER_INITIAL:
 	LDI	CNT2_CHARGE,	04H
 	
 	LDI 	IRQ,		00H
-	LDI 	IE,		1100B 	;打开ADC,Timer0 中断
+	LDI 	IE,		1110B 	;打开ADC,Timer0,Timer1 中断
 
 
 REGISTER_INITIAL_END:
