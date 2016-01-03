@@ -809,8 +809,6 @@ RESET:
 	
 	CALL	CHARGE_BAT_ENABLE	;上电后，即开始对电池进行充电
 
-	LDI	TCTL1,		00H	;关闭Timer1，停止蜂鸣
-
 MAIN_LOOP:
 	CALL	CHARGE_BAT_CTRL		;[充电控制]  根据主电源状态、待充电时长、电池是否充满标志位等进行电池充电控制
 	CALL	EMERGENCY_CTRL		;[放电控制]  主电源停电后的应急放电控制，退出应急状态时，计算此次应急放电时长
@@ -1022,6 +1020,8 @@ WAIT_AD_RESULT:
 	CALL	DELAY_5MS
 	CALL	DELAY_5MS
 	CALL	DELAY_5MS
+
+	LDI	TCTL1,		00H	;关闭Timer1，停止蜂鸣
 
 WAIT_PWR_NML:	
 	ORIM	FLAG_OCCUPIED,	0100B	;锁定通道6最终结果
@@ -1297,7 +1297,7 @@ RE_CALC_TIME_END:
 ;应急放电控制
 ;主电源停电后的应急放电控制。
 ;何时开始应急放电:主电源AD引脚电压低于1.115V后
-;何时停止应急放电:主电源AD引脚电压高于1.396V后，或是电池耗尽(电池AD引脚电压低于0.96V)
+;何时停止应急放电:主电源AD引脚电压高于1.396V后，或是电池耗尽(电池AD引脚电压低于0.96V)，或是按键长按7秒亦可停止应急放电
 ;停止应急放电时，得出应急放电时长
 ;***********************************************************
 EMERGENCY_CTRL:
@@ -1383,6 +1383,13 @@ LESS_30_MINUTE:
 	
 
 EMERGENCY_CNT:
+	ADI	PRESS_DURATION,	1000B	;判断按键是否被按下超过7秒
+	BA3	EMERG_CNT_START
+
+	CALL	EMERGENCY_DISABLE	;关闭应急
+	STOP				;系统停止工作
+
+EMERG_CNT_START:	
 	ADI	F_1S,		0001B	;每秒检查一次
 	BA0	EMERGENCY_BATTERY
 
@@ -1718,7 +1725,7 @@ KEY_CHECK:
 	
 	LDA 	PORTD,		00H 	;读取PD 口状态
 	STA 	TEMP,		00H 	;把PD 口状态存到TEMP 寄存器中
-	;CALL 	DELAY_5MS 		;消除按键抖动
+	CALL 	DELAY_5MS 		;消除按键抖动
 	
 	;LDA 	PORTD,		00H 	;读取PD 口状态
 	;SUB 	TEMP,		00H 	;比较读取PD.0 口状态值，不相等则错误
@@ -1814,8 +1821,8 @@ KEY_PROCESS_END:
 ;
 ;***********************************************************
 SELF_CHK_STATE:
-	;LDA	SYSTEM_STATE
-	;BA0	SELF_CHK_STATE_END	;当前处于停电状态，不作自检标志位检查
+	LDA	SYSTEM_STATE
+	BA0	SELF_CHK_STATE_END	;当前处于停电状态，不作自检标志位检查
 
 	LDA	F_TIME
 	BA2	SET_YEAR_BIT		;如果1年时间已到，则跳转
@@ -1839,11 +1846,13 @@ SCT_SET_EMEG:
 	LDI	SELF_STATE,	1001B	;置模拟应急标志位
 
 SCT_BTN_RELEASED:
-	LDA	PRESS_DURATION		
+	LDA	PRESS_DURATION	
+	BAZ	SELF_CHK_STATE_END	;如果没有按键，则跳转
+	
 	BA0	SCS_LESS_3S		;如果持续按键时长小于3秒，则跳转
 	BA1	SCS_LESS_5S		;如果持续按键时长大于3秒，小于5秒，则跳转
 	BA2	SCS_LESS_7S		;如果持续按键时长大于5秒，小于7秒，则跳转
-	JMP	SELF_CHK_STATE_END
+	BA3	SCS_LESS_7S		;如果持续按键时长大于7秒，则跳转
 	
 ;--------------------------------------------------------------------------------------
 
