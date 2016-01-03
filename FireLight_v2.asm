@@ -923,7 +923,7 @@ REGISTER_INITIAL:
 	LDI	TBR,		0001B	;打开PD.0 内部上拉电阻
 	STA	PPDCR
 
-	LDI 	PORTE,		00H
+	LDI 	PORTE,		0010B	;PE.1继电器输出高电平
 	LDI 	PECR,		0FH 	;设置PortE 作为输出口
 
 	;ADC初始化
@@ -1097,7 +1097,7 @@ PRE_START_TYPE_CHK_END:
 ;***********************************************************
 CHARGE_BAT_ENABLE:
 
-	LDI	PWMC1,		0000B	;PWM0 Clock = tosc = 4M
+	LDI	PWMC1,		0000B	;PWM1 Clock = tosc = 4M
 	LDI	PWMP10,		0DH	;周期为125个PWM0 Clock
 	LDI	PWMP11,		07H	
 	LDI	PWMD10,		00H	;无微调
@@ -1124,7 +1124,7 @@ CHARGE_BAT_DISABLE:
 	BNZ	LI_BAT
 
 NI_BAT:
-	LDI	PWMC1,		0000B	;PWM0 Clock = 8 * tosc = 2us
+	LDI	PWMC1,		0000B	;PWM1 Clock = 8 * tosc = 2us
 	LDI	PWMP10,		0AH	;周期为250个PWM0 Clock
 	LDI	PWMP11,		0FH	
 	LDI	PWMD10,		00H	;无微调
@@ -1135,7 +1135,7 @@ NI_BAT:
 	JMP	CHARGE_BAT_DISABLE_END
 
 LI_BAT:
-	LDI	PWMC1,		0000B	;PWM0 Clock = tosc = 4M
+	LDI	PWMC1,		0000B	;PWM1 Clock = tosc = 4M
 	LDI	PWMP10,		00H	;周期为0个PWM0 Clock
 	LDI	PWMP11,		00H	
 	LDI	PWMD10,		00H	;无微调
@@ -1899,6 +1899,48 @@ SELF_CHK_STATE_END:
 
 
 ;***********************************************************
+;在月检、年检、模拟停电、手动月检、手动年检时，打开应急
+;1. PE.1继电器输出低电平
+;2. 延时20ms
+;3. 使能PWM0
+;***********************************************************
+EN_PWM0_DLY_20MS:
+
+	ANDIM	PORTE,		1101B	;PE.1输出低电平
+
+	CALL	DELAY_5MS		;延时20ms
+	CALL	DELAY_5MS
+	CALL	DELAY_5MS
+	CALL	DELAY_5MS
+
+	ORIM	PWMC0,		0001B	;使能PWM0输出
+
+EN_PWM0_DLY_20MS_END:
+	RTNI
+
+
+;***********************************************************
+;在月检、年检、模拟停电、手动月检、手动年检时，关闭应急
+;1. 禁能PWM0
+;2. 延时20ms
+;3. PE.1继电器恢复输出高电平
+;***********************************************************
+DIS_PWM0_DLY_20MS:
+
+	ANDIM	PWMC0,		1110B	;关闭PWM0输出
+
+	CALL	DELAY_5MS		;延时20ms
+	CALL	DELAY_5MS
+	CALL	DELAY_5MS
+	CALL	DELAY_5MS
+
+	ORIM	PORTE,		0010B	;PE.1输出高电平
+
+DIS_PWM0_DLY_20MS_END:
+	RTNI
+	
+
+;***********************************************************
 ;根据自检标志位，进行自检
 ;输入
 ;-- SELF_STATE		当前系统自检状态
@@ -1938,13 +1980,13 @@ SCP_CLEAR_ALL:
 ;---------------------------------------------------------------------------
 
 SCP_EMERGENCY:
-	ORIM	PWMC0,		0001B	;使能PWM0输出
+	CALL	EN_PWM0_DLY_20MS	;使能PWM0输出
 	JMP	SELF_CHK_PROCESS_END
 
 ;---------------------------------------------------------------------------
 
 SCP_DIS_EMERGENCY:
-	ANDIM	PWMC0,		1110B	;关闭PWM0输出
+	CALL	DIS_PWM0_DLY_20MS	;关闭PWM0输出
 	JMP	SELF_CHK_PROCESS_END
 
 ;---------------------------------------------------------------------------
@@ -1957,7 +1999,7 @@ SCP_MONTH:
 	LDI	CNT0_EMERGENCY,	00H	;应急时长清零
 	LDI	CNT1_EMERGENCY,	00H
 	LDI	CNT2_EMERGENCY,	00H
-	ORIM	PWMC0,		0001B	;使能PWM0输出
+	CALL	EN_PWM0_DLY_20MS	;使能PWM0输出
 	JMP	SELF_CHK_PROCESS_END
 	
 ;---------------------------------------------------------------------------
@@ -1999,7 +2041,7 @@ SCP_MONTH_1S:
 ;---------------------------------------------------------------------------
 
 SCP_ARRIVE_120S:
-	ANDIM	PWMC0,		1110B	;关闭PWM0输出
+	CALL	DIS_PWM0_DLY_20MS	;关闭PWM0输出
 	LDI	SELF_STATE,	0000B	;清月检标志位
 	ANDIM	GREEN_FLASH,	1101B	;让绿灯停止以1HZ的频率闪烁	
 	ANDIM	ALREADY_ENTER,	1011B	;清在手动月检状态下已经开始应急的标志位
@@ -2018,7 +2060,7 @@ SCP_YEAR:
 	LDI	CNT0_EMERGENCY,	00H	;应急时长清零
 	LDI	CNT1_EMERGENCY,	00H
 	LDI	CNT2_EMERGENCY,	00H
-	ORIM	PWMC0,		0001B	;使能PWM0输出
+	CALL	EN_PWM0_DLY_20MS	;使能PWM0输出
 	JMP	SELF_CHK_PROCESS_END
 
 SCP_YEAR_1S:
@@ -2063,7 +2105,7 @@ SCP_YEAR_1S:
 ;---------------------------------------------------------------------------
 
 SCP_ARRIVE_30MIN:
-	ANDIM	PWMC0,		1110B	;关闭PWM0输出
+	CALL	DIS_PWM0_DLY_20MS	;关闭PWM0输出
 	LDI	SELF_STATE,	0000B	;清年检标志位
 	ANDIM	GREEN_FLASH,	1011B	;让绿灯停止以3HZ的频率闪烁
 	ANDIM	ALREADY_ENTER,	0111B	;清已经进入手动年检标志位	
