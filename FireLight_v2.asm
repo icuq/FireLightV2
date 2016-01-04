@@ -203,6 +203,8 @@ BEEP_CTL	EQU	5DH		;bit0 = 1, 表示产生了某些故障，蜂鸣器应当每隔50秒产生持续2秒的
 					;bit2 = 1, 表示50秒已到，此时应使能TCTL1.3
 					;bti3 = 0, 表示正在对2秒进行计时，bit 3 = 1, 表示正在对50秒进行计时
 
+BEEP_BTN	EQU	5EH		;bit0 = 1, 表示按键被按下，蜂鸣器就作出提示
+
 CNT_2S		EQU	6BH		;计数器，用于计时2秒
 CNT0_50S	EQU	6CH		;计数器，用于计时50秒
 CNT1_50S	EQU	6DH	
@@ -386,6 +388,11 @@ J_168MS:
 	LDI	CNT1_168MS,	01H
 
 	ORIM	F_168MS,	0011B	;设置 "168ms 到"标志，1)bit0供翻转LED用，2)bit1供按键检测用
+
+	ADI	BEEP_BTN,	0001B
+	BA0	J_1S
+	ANDIM	BEEP_BTN,	1110B	;清按键蜂鸣标志位
+	ANDIM	TCTL1,		0111B	;如果按键蜂鸣标志位为1，则关闭蜂鸣器
 
 J_1S:	
 	SBIM 	CNT0_8MS,	01H	;每次Timer0中断产生后，将CNT0_8MS减1
@@ -1119,7 +1126,7 @@ CHARGE_BAT_ENABLE_END:
 ; 对于镍镉电池，通过PWM1输出频率2K,1/4点空比的方波，对电池进行涓流充电
 ;***********************************************************
 CHARGE_BAT_DISABLE:
-	LDA	TBR,		0011B
+	LDI	TBR,		0011B
 	AND	LIGHT_TYPE		;判断电池类型
 	BNZ	LI_BAT
 
@@ -1139,8 +1146,8 @@ LI_BAT:
 	LDI	PWMP10,		00H	;周期为0个PWM0 Clock
 	LDI	PWMP11,		00H	
 	LDI	PWMD10,		00H	;无微调
-	LDI	PWMD11,		0DH	;占空比为100%
-	LDI	PWMD12,		07H
+	LDI	PWMD11,		00H	;占空比为100%
+	LDI	PWMD12,		00H
 	ORIM	PWMC1,		0001B	;使能PWM1输出
 
 CHARGE_BAT_DISABLE_END:
@@ -1162,7 +1169,7 @@ CHARGE_BAT_CTRL:
 
 	ANDIM	FLAG_OCCUPIED,	1011B	;释放对通道6最终结果的锁定
 
-	BC	SET_PWR_DOWN_BIT	;如果停电,则跳转
+	BC	IN_EMERGENCY		;如果停电,则跳转
 
 	LDA	ALREADY_ENTER		;如果主电源供电正常，则检查是否已经进入充电状态
 	BA0	CHARGE_DURATION		;如果已经进入充电状态
@@ -1198,6 +1205,17 @@ STOP_CHARGE:
 	CALL	CHARGE_BAT_DISABLE
 	JMP	CHARGE_BAT_CTRL_END
 
+IN_EMERGENCY:
+	ANDIM	ALREADY_ENTER,	1110B	;清已经开始充电标志位
+
+	LDI	PWMC1,		0000B	;PWM1 Clock = tosc = 4M
+	LDI	PWMP10,		00H	;周期为0个PWM0 Clock
+	LDI	PWMP11,		00H	
+	LDI	PWMD10,		00H	;无微调
+	LDI	PWMD11,		0DH	;占空比为100%
+	LDI	PWMD12,		07H
+	ORIM	PWMC1,		0001B	;使能PWM1输出
+
 SET_PWR_DOWN_BIT:
 	ORIM	SYSTEM_STATE,	0001B
 
@@ -1226,7 +1244,8 @@ EMERGENCY_ENABLE:
 	LDI	PWMD00,		00H	;无微调
 	LDI	PWMD01,		0EH	;占空比为50%
 	LDI	PWMD02,		03H
-	ORIM	PWMC0,		0001B	;使能PWM0输出
+	;ORIM	PWMC0,		0001B	;使能PWM0输出
+	CALL	EN_PWM0_DLY_20MS
 
 EMERGENCY_ENABLE_END:
 	RTNI
@@ -1236,7 +1255,8 @@ EMERGENCY_ENABLE_END:
 ;禁能PWM0，关闭应急功能
 ;***********************************************************
 EMERGENCY_DISABLE:
-	LDI	PWMC0,		0000B	;禁能PWM0
+	;LDI	PWMC0,		0000B	;禁能PWM0
+	CALL	DIS_PWM0_DLY_20MS
 
 EMERGENCY_DISABLE_END:
 	RTNI
@@ -1387,7 +1407,8 @@ EMERGENCY_CNT:
 	BA3	EMERG_CNT_START
 
 	CALL	EMERGENCY_DISABLE	;关闭应急
-	STOP				;系统停止工作
+	;STOP				;系统停止工作
+	CALL	PRE_START_PWR_CHK
 
 EMERG_CNT_START:	
 	ADI	F_1S,		0001B	;每秒检查一次
@@ -1614,7 +1635,7 @@ ALARM_LIGHT:
 	AND	ALARM_STATE		;判断光源是否处于故障状态
 	BAZ	ALARM_TIME_NOT_ENOUGH	;光源没有故障，则跳转
 
-	ADI	CNT0_168MS,	01H	;判断是否到了一个新168MS
+	ADI	F_168MS,	01H	;判断是否到了一个新168MS
 	BA0	ALARM_TIME_NOT_ENOUGH	;还未到新的168MS,跳转
 
 	EORIM	PORTE,		0001B	;以3HZ频率翻转黄灯
@@ -1754,6 +1775,16 @@ KEY_RELEASED:
 	JMP	KEY_CHECK_PROCESS_OVER
 
 KEY_PRESSED:	
+	LDA	BTN_PRE_STA		;将上一次按键状态载入累加器A 中
+	BA0	BUTTON_BEEP_STOP	;如果上一次未按下，则跳转
+
+	JMP	KEY_CMP
+	
+BUTTON_BEEP_STOP:
+	ORIM	BEEP_BTN,	0001B	;置按键蜂鸣标志位
+	ORIM	TCTL1,		1000B	;让蜂鸣器开始蜂鸣
+
+KEY_CMP:	
 	SBI	BTN_PRESS_CNT0, 0AH	;比较BTN_PRESS_CNT 与 0x2A 的大小
 	LDI	TBR,		02H
 	SBC	BTN_PRESS_CNT1
