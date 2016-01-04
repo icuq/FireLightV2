@@ -1053,21 +1053,21 @@ PRE_START_TYPE_CHK:
 	SUB	CMP_TYPE00
 	LDA	CHN7_FINAL_RET2,01H
 	SBC	CMP_TYPE01
-	BNC	LI_ON			;
+	BC	LI_ON			;如果检测到的电压小于0.6V，则灯具为锂电池，常亮型
 
 	LDA	CHN7_FINAL_RET1,01H	;和门限1比较
 	SUB	CMP_TYPE10
 	LDA	CHN7_FINAL_RET2,01H
 	SBC	CMP_TYPE11
-	BNC	LI_OFF			;
+	BC	LI_OFF			;如果检测到的电压小于1.2V，则灯具为锂电池，常灭型
 
 	LDA	CHN7_FINAL_RET1,01H	;和门限2比较
 	SUB	CMP_TYPE20
 	LDA	CHN7_FINAL_RET2,01H
 	SBC	CMP_TYPE21
-	BNC	NI_ON			;
+	BC	NI_ON			;如果检测到的电压小于1.8V，则灯具为镍镉电池，常亮型
 
-NI_OFF:
+NI_OFF:					;如果检测到的电压大于1.8V，则灯具为镍镉电池，常灭型
 	LDI	LIGHT_TYPE,	1000B
 	JMP	PRE_START_TYPE_CHK_END
 	
@@ -1116,7 +1116,7 @@ CHARGE_BAT_ENABLE_END:
 
 ;***********************************************************
 ; 对于锂电池，通过PWM1输出低电平，停止对电池充电
-; 对于镍镉电池，通过PWM1输出方波，对电池进行涓流充电
+; 对于镍镉电池，通过PWM1输出频率2K,1/4点空比的方波，对电池进行涓流充电
 ;***********************************************************
 CHARGE_BAT_DISABLE:
 	LDA	TBR,		0011B
@@ -1124,7 +1124,7 @@ CHARGE_BAT_DISABLE:
 	BNZ	LI_BAT
 
 NI_BAT:
-	LDI	PWMC1,		0000B	;PWM1 Clock = 8 * tosc = 2us
+	LDI	PWMC1,		0110B	;PWM1 Clock = 8 * tosc = 2us
 	LDI	PWMP10,		0AH	;周期为250个PWM0 Clock
 	LDI	PWMP11,		0FH	
 	LDI	PWMD10,		00H	;无微调
