@@ -262,6 +262,8 @@ PRESS_DURATION	EQU	7BH		;按键被按下持续时长标志
 					;bit2 = 1;  被按下时长大于5秒，小于7秒
 					;bit3 = 1;  被按下时长大于7秒
 
+F_RESUME_CHG	EQU	7CH		;bit0 = 1, 表示由于自检应急，导致充电过程被中止					
+
 ;Bank1(以下寄存器真实地址应加上80H)
 ;------------------------------------------------------------------
 CHN0_RET0_BAK0	EQU	00H		;ADC CHN0 转换结果低2位备份
@@ -1171,6 +1173,14 @@ CHARGE_BAT_CTRL:
 
 	BC	IN_EMERGENCY		;如果停电,则跳转
 
+	LDA	SELF_STATE
+	BAZ	CHARGE_TAG		;如果没有在自检应急，则跳转
+
+	ANDIM	PWMC1,		1110B	;禁能PWM1输出
+	ORIM	F_RESUME_CHG,	0001B	;置充电过程被应急中断的标志位
+	JMP	CHARGE_BAT_CTRL_END
+
+CHARGE_TAG:
 	LDA	ALREADY_ENTER		;如果主电源供电正常，则检查是否已经进入充电状态
 	BA0	CHARGE_DURATION		;如果已经进入充电状态
 
@@ -1182,6 +1192,12 @@ CHARGE_BAT_CTRL:
 	JMP	CHARGE_BAT_CTRL_END	;不需要对电池充电
 	
 CHARGE_DURATION:
+	ADI	F_RESUME_CHG,	0001B
+	BA0	CHARGE_TAG_2
+	
+	ORIM	PWMC1,		0001B	;恢复充电
+
+CHARGE_TAG_2:
 	ADI	F_TIME,		1000B
 	BA3	IS_BAT_FULL		;1分钟未到
 
@@ -1577,6 +1593,9 @@ LIGHT_STATE_CHK_END:
 TIPS_PROCESS:
 ;红灯的处理
 RED:
+	LDA	SELF_STATE
+	BNZ	RED_ERROR		;如果正在自检，则跳转
+
 	LDA	ALARM_STATE 		;判断电池充电回路是否处于故障状态
 	BA0	RED_ERROR		;电池有故障，则跳转
 
