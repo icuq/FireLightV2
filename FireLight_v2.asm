@@ -111,152 +111,152 @@ ALREADY_ENTER	EQU	33H		;bit 0:  0 - 当前并未开始充电,      1 - 当前已经开始充电
 					;bit 3:  0 - 当前并未进入手动年检,  1 - 当前已经进入手动年检状态
 				
 ; 用于TIMER 定时
-F_1S		EQU	35H		;bit0 = 1, 1s 到，用于计时应急时长
+F_1S		EQU	34H		;bit0 = 1, 1s 到，用于计时应急时长
 					
-F_TIME 		EQU 	36H 		;bit0 = 1, 1秒到; 
+F_TIME 		EQU 	35H 		;bit0 = 1, 1秒到; 
 					;bit1 = 1, 1月到; 
 					;bit2 = 1, 1年到; 
 					;bit3 = 1, 1分钟到。
 
-CNT0_8MS 	EQU 	37H	 	;CNT1_8MS, CNT0_8MS组成的8bit数据达到125时，即Timer0产生125次中断后，表示1S计时已到
-CNT1_8MS 	EQU 	38H 		;所以，初始化CNT1_8MS=07H, CNT0_8MS=0DH
+CNT0_8MS 	EQU 	36H	 	;CNT1_8MS, CNT0_8MS组成的8bit数据达到125时，即Timer0产生125次中断后，表示1S计时已到
+CNT1_8MS 	EQU 	37H 		;所以，初始化CNT1_8MS=07H, CNT0_8MS=0DH
 
-SEC_CNT0	EQU	39H		;SEC_CNT0/1/2 以秒为单位计时
-SEC_CNT1	EQU	3AH		;当数值达到1小时，即3600(E10H)秒时，向HOUR_CNT0/1进位，自身清零。
-SEC_CNT2	EQU	3BH
+SEC_CNT0	EQU	38H		;SEC_CNT0/1/2 以秒为单位计时
+SEC_CNT1	EQU	39H		;当数值达到1小时，即3600(E10H)秒时，向HOUR_CNT0/1进位，自身清零。
+SEC_CNT2	EQU	3AH
 
-HOUR_CNT0	EQU	3CH		;HOUR_CNT0/1 以小时为单位计时
-HOUR_CNT1	EQU	3DH		;当数值达到1月时，即744(2EBH)小时时，向MONTH_CNT0/1进位，同时置F_TIME.1，自身清零。
-HOUR_CNT2	EQU	3EH		
+HOUR_CNT0	EQU	3BH		;HOUR_CNT0/1 以小时为单位计时
+HOUR_CNT1	EQU	3CH		;当数值达到1月时，即744(2EBH)小时时，向MONTH_CNT0/1进位，同时置F_TIME.1，自身清零。
+HOUR_CNT2	EQU	3DH		
 
-MONTH_CNT	EQU	3FH		;MONTH_CNT0/1 以月为单位计时
+MONTH_CNT	EQU	3EH		;MONTH_CNT0/1 以月为单位计时
 					;当数值达到1年时，即12(0CH)月时，，同时置F_TIME.2，自身清零。
 
-TEMP_SUM_CY	EQU	40H		;AD子程序参数临时变量
-FLAG_OCCUPIED	EQU	41H		;bit0/1/2/3 = 1时分别表示CHN0、1、6、7的转换结果(CHN0_FINAL_RET1等)正被前台使用,
+TEMP_SUM_CY	EQU	3FH		;AD子程序参数临时变量
+FLAG_OCCUPIED	EQU	40H		;bit0/1/2/3 = 1时分别表示CHN0、1、6、7的转换结果(CHN0_FINAL_RET1等)正被前台使用,
 					;此时ADC中断不能修改这些数据。	
 
-FLAG_TYPE	EQU	42H		;bit0 = 1表示已经完成灯具类型选择(PORTB.3/AN7),此位为1后不再需要对AN7进行AD采样
+FLAG_TYPE	EQU	41H		;bit0 = 1表示已经完成灯具类型选择(PORTB.3/AN7),此位为1后不再需要对AN7进行AD采样
 
 
-CMP_MIN_PWR0	EQU	43H		;上电自检时，灯具电源最小电压值.(1.396V -> 0x23B ->(丢弃最低2位) 0x8E)
-CMP_MIN_PWR1	EQU	44H		;
+CMP_MIN_PWR0	EQU	42H		;上电自检时，灯具电源最小电压值.(1.396V -> 0x23B ->(丢弃最低2位) 0x8E)
+CMP_MIN_PWR1	EQU	43H		;
 
-CMP_TYPE00	EQU	45H		;灯具类型门限0
-CMP_TYPE01	EQU	46H		;
+CMP_TYPE00	EQU	44H		;灯具类型门限0
+CMP_TYPE01	EQU	45H		;
 
-CMP_TYPE10	EQU	47H		;灯具类型门限1
-CMP_TYPE11	EQU	48H		;
+CMP_TYPE10	EQU	46H		;灯具类型门限1
+CMP_TYPE11	EQU	47H		;
 
-CMP_TYPE20	EQU	49H		;灯具类型门限2
-CMP_TYPE21	EQU	4AH		;
+CMP_TYPE20	EQU	48H		;灯具类型门限2
+CMP_TYPE21	EQU	49H		;
 
-LIGHT_TYPE	EQU	4BH		;灯具类型
+LIGHT_TYPE	EQU	4AH		;灯具类型
 					;bit0 = 1, 锂电池，常亮型
 					;bit1 = 1, 锂电池，常灭型
 					;bit2 = 1, 镍镉电池，常亮型
 					;bit3 = 1, 镍镉电池，常灭型
 
-CMP_SUPPLY0	EQU	4CH		;检测到电源电压小于此数值时，开始应急放电.(1.115V -> 0x72)
-CMP_SUPPLY1	EQU	4DH
+CMP_SUPPLY0	EQU	4BH		;检测到电源电压小于此数值时，开始应急放电.(1.115V -> 0x72)
+CMP_SUPPLY1	EQU	4CH
 
-DURATION_EMER	EQU	4EH		;bit0 = 1, 应急时长小于5分钟
+DURATION_EMER	EQU	4DH		;bit0 = 1, 应急时长小于5分钟
 					;bit1 = 1, 应急时长大于5分钟，小于30分钟
 					;bit2 = 1, 应急时长大于30分钟
 					
-CNT0_EMERGENCY	EQU	4FH		;对应急时长计时，单位s
-CNT1_EMERGENCY	EQU	50H
-CNT2_EMERGENCY	EQU	51H
+CNT0_EMERGENCY	EQU	4EH		;对应急时长计时，单位s
+CNT1_EMERGENCY	EQU	4FH
+CNT2_EMERGENCY	EQU	50H
 
-CMP_EXIT_EMER0	EQU	52H		;检测到电池电压小于此数值时(0.96V -> 0x62)，应该关闭应急放电功能
-CMP_EXIT_EMER1	EQU	53H
+CMP_EXIT_EMER0	EQU	51H		;检测到电池电压小于此数值时(0.96V -> 0x62)，应该关闭应急放电功能
+CMP_EXIT_EMER1	EQU	52H
 
-CMP_BAT_OPEN0	EQU	54H		;检测到电池电压大于此数值时(1.56V -> 0x9F)，视为电池充电回路开路
-CMP_BAT_OPEN1	EQU	55H
+CMP_BAT_OPEN0	EQU	53H		;检测到电池电压大于此数值时(1.56V -> 0x9F)，视为电池充电回路开路
+CMP_BAT_OPEN1	EQU	54H
 
-CMP_BAT_FULL0	EQU	56H		;检测到电池电压大于此数值时(1.44V -> 0x93)，视为电池已充满
-CMP_BAT_FULL1	EQU	57H
+CMP_BAT_FULL0	EQU	55H		;检测到电池电压大于此数值时(1.44V -> 0x93)，视为电池已充满
+CMP_BAT_FULL1	EQU	56H
 
-CMP_BAT_CHARGE0	EQU	58H		;检测到电池电压小于此数值时(1.35V -> 0x8A)，视为电池得开始充电了
-CMP_BAT_CHARGE1	EQU	59H
+CMP_BAT_CHARGE0	EQU	57H		;检测到电池电压小于此数值时(1.35V -> 0x8A)，视为电池得开始充电了
+CMP_BAT_CHARGE1	EQU	58H
 
 
 
-BAT_STATE	EQU	69H		;bit0 = 0, 表示充电回路未开路；bit0 = 1, 表示充电回路开路
+BAT_STATE	EQU	59H		;bit0 = 0, 表示充电回路未开路；bit0 = 1, 表示充电回路开路
 					;bit1 = 0, 表示电池未充满；bit1 = 1, 表示电池已充满
 					;bit2 = 0, 表示电池还不需要充电；bit2 = 1, 表示电池需要充电
 					;bit3 = 1, 表示电池电压过低，不能再继续应急放电了
 
 
-CMP_LIGHT0	EQU	6AH		;供光源检测使用,AD转换结果小于此数值时(0.2V -> 0x14)，表示光源产生故障
-CMP_LIGHT1	EQU	5AH
+CMP_LIGHT0	EQU	5AH		;供光源检测使用,AD转换结果小于此数值时(0.2V -> 0x14)，表示光源产生故障
+CMP_LIGHT1	EQU	5BH
 
-LIGHT_STATE	EQU	5BH		;bit0 = 1, 表示光源故障
+LIGHT_STATE	EQU	5CH		;bit0 = 1, 表示光源故障
 
 
-ALARM_STATE	EQU	5CH		;bit0 = 1, 表示电池故障(开路或短路)
+ALARM_STATE	EQU	5DH		;bit0 = 1, 表示电池故障(开路或短路)
 					;bit1 = 1, 表示光源故障(开路或短路)
 					;bit2 = 1, 表示自检放电时间不足
 
-BEEP_CTL	EQU	5DH		;bit0 = 1, 表示产生了某些故障，蜂鸣器应当每隔50秒产生持续2秒的蜂鸣					
+BEEP_CTL	EQU	5EH		;bit0 = 1, 表示产生了某些故障，蜂鸣器应当每隔50秒产生持续2秒的蜂鸣					
 					;bit1 = 1, 表示2秒已到，此时应禁能TCTL1.3
 					;bit2 = 1, 表示50秒已到，此时应使能TCTL1.3
 					;bti3 = 0, 表示正在对2秒进行计时，bit 3 = 1, 表示正在对50秒进行计时
 
-BEEP_BTN	EQU	5EH		;bit0 = 1, 表示按键被按下，蜂鸣器就作出提示
+BEEP_BTN	EQU	5FH		;bit0 = 1, 表示按键被按下，蜂鸣器就作出提示
 
-CNT_2S		EQU	6BH		;计数器，用于计时2秒
-CNT0_50S	EQU	6CH		;计数器，用于计时50秒
-CNT1_50S	EQU	6DH	
+CNT_2S		EQU	60H		;计数器，用于计时2秒
+CNT0_50S	EQU	61H		;计数器，用于计时50秒
+CNT1_50S	EQU	62H	
 
-ALREADY_BEEP	EQU	6EH		;bit0 = 1, 表示已经使能TIMER1
+ALREADY_BEEP	EQU	63H		;bit0 = 1, 表示已经使能TIMER1
 					
-CNT_LED_YELLOW	EQU	5FH		;计数器，供翻转黄灯输出使用，计时单位为168MS
+CNT_LED_YELLOW	EQU	64H		;计数器，供翻转黄灯输出使用，计时单位为168MS
 
 
-FLAG_SIMU_EMER	EQU	60H		;bit0 = 1, 表示在"模拟停电"状态下已经打开应急功能
+FLAG_SIMU_EMER	EQU	65H		;bit0 = 1, 表示在"模拟停电"状态下已经打开应急功能
 					;bit1 = 1表示1s已到
 
-CNT0_1MINUTE	EQU	61H		;每1秒加1，直至计时满1分钟为止
-CNT1_1MINUTE	EQU	62H
+CNT0_1MINUTE	EQU	66H		;每1秒加1，直至计时满1分钟为止
+CNT1_1MINUTE	EQU	67H
 
 
-CNT0_CHARGE	EQU	63H		;还应充电多长时间，初始值为20小时，即20 * 60 =1200分钟(0x4B0)
-CNT1_CHARGE	EQU	64H
-CNT2_CHARGE	EQU	65H
+CNT0_CHARGE	EQU	68H		;还应充电多长时间，初始值为20小时，即20 * 60 =1200分钟(0x4B0)
+CNT1_CHARGE	EQU	69H
+CNT2_CHARGE	EQU	6AH
 
-GREEN_FLASH	EQU	66H		;用于手动月检或手动年检时的LED闪烁
+GREEN_FLASH	EQU	6BH		;用于手动月检或手动年检时的LED闪烁
 					;BIT1 = 1, 按键时长超过了3秒，绿灯开始以1HZ的频率闪烁
 					;BIT2 = 1, 按键时长超过了5秒，绿灯开始以3HZ的频率闪烁
 
 
-CNT_LED_GREEN	EQU	67H		;供绿色LED翻转用
+CNT_LED_GREEN	EQU	6CH		;供绿色LED翻转用
+
+FIXED_SELF_CHK	EQU	6DH		;bi0 = 1， 表示在自检过程中检测到了电池开路、短路，光源开路、短路，放电时长不足的故障，因此不能退出自检状态
 
 ;按键相关寄存器
-DELAY_TIMER2	EQU	71H		;延时子程序使用
-DELAY_TIMER1	EQU	72H		;延时子程序使用
-DELAY_TIMER0	EQU	73H		;延时子程序使用
-CLEAR_AC 	EQU 	74H 		;清除累加器A 值用寄存器
-TEMP 		EQU 	75H 		;临时寄存器
+DELAY_TIMER2	EQU	6EH		;延时子程序使用
+DELAY_TIMER1	EQU	6FH		;延时子程序使用
+DELAY_TIMER0	EQU	70H		;延时子程序使用
+CLEAR_AC 	EQU 	71H 		;清除累加器A 值用寄存器
+TEMP 		EQU 	72H 		;临时寄存器
 
-;CNT0_496MS	EQU	76H		;用于定时496MS
-;CNT1_496MS	EQU	77H
 
-BTN_PRE_STA	EQU	78H		;bit0储存上一次按键状态,0:按下,1:未按下
-BTN_PRESS_CNT0	EQU	79H		;按键按下时长，单位为168ms
-BTN_PRESS_CNT1	EQU	68H
+BTN_PRE_STA	EQU	73H		;bit0储存上一次按键状态,0:按下,1:未按下
+BTN_PRESS_CNT0	EQU	74H		;按键按下时长，单位为168ms
+BTN_PRESS_CNT1	EQU	75H
 
 ;led
-CNT0_168MS	EQU	7AH		;用于定时168MS,供翻转LED用
-CNT1_168MS	EQU	7BH
+CNT0_168MS	EQU	76H		;用于定时168MS,供翻转LED用
+CNT1_168MS	EQU	77H
 
-F_168MS		EQU	7CH		;每168ms将bit0 = 1, 供翻转LED使用
+F_168MS		EQU	78H		;每168ms将bit0 = 1, 供翻转LED使用
 					;每168ms将bit1 = 1, 供按键检测使用
 
-CMP_RESUME0	EQU	7DH		;检测到电源电压大于此数值时，表示市电供电已恢复，应关闭应急.(1.396V -> 0x8E)
-CMP_RESUME1	EQU	7EH
+CMP_RESUME0	EQU	79H		;检测到电源电压大于此数值时，表示市电供电已恢复，应关闭应急.(1.396V -> 0x8E)
+CMP_RESUME1	EQU	7AH
 
-PRESS_DURATION	EQU	7FH		;按键被按下持续时长标志
+PRESS_DURATION	EQU	7BH		;按键被按下持续时长标志
 					;bit0 = 1;  被按下时长小于3秒
 					;bit1 = 1;  被按下时长大于3秒，小于5秒
 					;bit2 = 1;  被按下时长大于5秒，小于7秒
@@ -1479,10 +1479,16 @@ BAT_OPEN:
 	ORIM	BAT_STATE,	0001B	;置充电回路开路标志位
 	ORIM	ALARM_STATE,	0001B	;置充电回路开路故障标志位
 
-	ADI	SELF_STATE,	1000B	;判断是否处于手动自检状态
-	BA3	BAT_STATE_CHK_END
-	ORIM	BEEP_CTL,	0001B	;在手动自检状态下，检测到充电回路开路故障，此时蜂鸣器应每50秒蜂鸣2秒
+	;ADI	SELF_STATE,	1000B	;判断是否处于手动自检状态
+	;BA3	BAT_STATE_CHK_END
+	LDI	TBR,		0110B
+	AND	SELF_STATE
+	BAZ	BAT_BEEP		;如果在非自检状态下检测到电池开路故障，则跳转
+
+	ORIM	FIXED_SELF_CHK,	0001B	;在自检状态下检测到电池开路故障，则置不能退出自检状态标志位
 	
+BAT_BEEP:
+	ORIM	BEEP_CTL,	0001B	;使蜂鸣器每50秒蜂鸣2秒
 	JMP	BAT_STATE_CHK_END
 
 BAT_FULL:
@@ -1521,9 +1527,17 @@ PROCESS_LIGHT:
 ERROR_LIGHT:
 	ORIM	ALARM_STATE,	0010B	;置光源故障标志位
 	
-	ADI	SELF_STATE,	1000B	;判断当前是否处于手动自检状态
-	BA3	PROCESS_LIGHT_END
-	ORIM	BEEP_CTL,	0001B	;如果手动自检状态下发生光源故障，则蜂鸣器应每50秒蜂鸣2秒
+	;ADI	SELF_STATE,	1000B	;判断当前是否处于手动自检状态
+	;BA3	PROCESS_LIGHT_END
+
+	LDI	TBR,		0110B
+	AND	SELF_STATE
+	BAZ	LIGHT_BEEP		;如果在非自检状态下检测到光源故障，则跳转
+
+	ORIM	FIXED_SELF_CHK,	0001B	;在自检状态下检测到光源故障，则置不能退出自检状态标志位
+	
+LIGHT_BEEP:
+	ORIM	BEEP_CTL,	0001B	;如果发生光源故障，则蜂鸣器应每50秒蜂鸣2秒
 
 PROCESS_LIGHT_END:
 	RTNI
@@ -1868,8 +1882,9 @@ MANUAL_CHK:
 	AND	SELF_STATE
 	BAZ	SCT_SET_EMEG		;如果按键被按下，并且系统未进入月检或是年检状态，则跳转
 
-	LDI	SELF_STATE,	00H	;如果按键被按下，并且系统处于月检可是年检状态，则退出
+	LDI	SELF_STATE,	00H	;如果按键被按下，并且系统处于月检或是年检状态，则退出
 	LDI	GREEN_FLASH,	00H	;月检或是年检状态，停止绿灯的闪烁
+	LDI	FIXED_SELF_CHK,	00H	;清 因故障不能退出自检状态标志位
 	JMP	SELF_CHK_STATE_END
 
 SCT_SET_EMEG:
@@ -1893,6 +1908,8 @@ SCS_LESS_3S:
 	BA0	SELF_CHK_STATE_END	;如果当前按键为按下状态，则跳转
 	
 	LDI	SELF_STATE,	00H	;退出月检、年检、模拟停电、手动月检、手动年检状态
+	LDI	FIXED_SELF_CHK,	00H	;清 因故障不能退出自检状态标志位
+
 	JMP	SELF_CHK_STATE_END
 
 ;--------------------------------------------------------------------------------------
@@ -2072,14 +2089,18 @@ SCP_MONTH_1S:
 
 	ORIM	ALARM_STATE,	0100B	;置放电时长不足标志位
 
-	ADI	SELF_STATE,	1000B
-	BA3	SCP_ARRIVE_120S
+	;ADI	SELF_STATE,	1000B
+	;BA3	SCP_ARRIVE_120S
 
-	ORIM	BEEP_CTL,	0001B	;如果在手动月检状态下，检测到放电时长不足120秒，则蜂鸣器应每50秒蜂鸣2秒
+	ORIM	BEEP_CTL,	0001B	;如果在月检状态下，检测到放电时长不足120秒，则蜂鸣器应每50秒蜂鸣2秒
+	ORIM	FIXED_SELF_CHK,	0001B	;在月检状态下，检测到放电时长不足120秒，则置因故障不能退出自检状态标志位
 	
 ;---------------------------------------------------------------------------
 
 SCP_ARRIVE_120S:
+	LDA	FIXED_SELF_CHK
+	BA0	SELF_CHK_PROCESS_END	;如果自检过程中，检测到有故障，则即使到了120秒，也不能自动退出月检状态
+
 	CALL	DIS_PWM0_DLY_20MS	;关闭PWM0输出
 	LDI	SELF_STATE,	0000B	;清月检标志位
 	ANDIM	GREEN_FLASH,	1101B	;让绿灯停止以1HZ的频率闪烁	
@@ -2135,15 +2156,18 @@ SCP_YEAR_1S:
 
 	ORIM	ALARM_STATE,	0100B	;置应急放电时长不足标志位
 
-	ADI	SELF_STATE,	1000B
-	BA3	SCP_ARRIVE_30MIN
+	;ADI	SELF_STATE,	1000B
+	;BA3	SCP_ARRIVE_30MIN
 
 	ORIM	BEEP_CTL,	0001B	;如果在手动年检状态下，检测到放电时长不足30分钟，则蜂鸣器应每50秒蜂鸣2秒
-
+	ORIM	FIXED_SELF_CHK,	0001B	;在月检状态下，检测到放电时长不足120秒，则置因故障不能退出自检状态标志位
 	
 ;---------------------------------------------------------------------------
 
 SCP_ARRIVE_30MIN:
+	LDA	FIXED_SELF_CHK
+	BA0	SELF_CHK_PROCESS_END	;如果自检过程中，检测到有故障，则即使到了30分钟，也不能自动退出年检状态
+
 	CALL	DIS_PWM0_DLY_20MS	;关闭PWM0输出
 	LDI	SELF_STATE,	0000B	;清年检标志位
 	ANDIM	GREEN_FLASH,	1011B	;让绿灯停止以3HZ的频率闪烁
