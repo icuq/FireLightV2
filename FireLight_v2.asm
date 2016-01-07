@@ -262,7 +262,6 @@ PRESS_DURATION	EQU	7BH		;按键被按下持续时长标志
 					;bit2 = 1;  被按下时长大于5秒，小于7秒
 					;bit3 = 1;  被按下时长大于7秒
 
-F_RESUME_CHG	EQU	7CH		;bit0 = 1, 表示由于自检应急，导致充电过程被中止					
 
 ;Bank1(以下寄存器真实地址应加上80H)
 ;------------------------------------------------------------------
@@ -1115,7 +1114,8 @@ CHARGE_BAT_ENABLE:
 	ORIM	PWMC1,		0001B	;使能PWM1输出
 
 	ORIM	ALREADY_ENTER,	0001B	;置已经开始充电标志位
-	LDI	CNT0_CHARGE,	0FH
+
+	LDI	CNT0_CHARGE,	0FH	;初始化待充电时长为20小时
 	LDI	CNT1_CHARGE,	0AH
 	LDI	CNT2_CHARGE,	04H
 
@@ -1162,40 +1162,29 @@ CHARGE_BAT_DISABLE_END:
 ;***********************************************************
 CHARGE_BAT_CTRL:
 
-	ORIM	FLAG_OCCUPIED,	0100B	;锁定通道6最终结果
-
-	LDA	CHN6_FINAL_RET1,01H
-	SUB	CMP_SUPPLY0
-	LDA	CHN6_FINAL_RET2,01H
-	SBC	CMP_SUPPLY1
-
-	ANDIM	FLAG_OCCUPIED,	1011B	;释放对通道6最终结果的锁定
-
-	BC	IN_EMERGENCY		;如果停电,则跳转
-
 	LDA	SELF_STATE
-	BAZ	CHARGE_TAG		;如果没有在自检应急，则跳转
+	BAZ	CHARGE_TAG		;如果处于主电状态，则跳转
 
-	ANDIM	PWMC1,		1110B	;禁能PWM1输出
-	ORIM	F_RESUME_CHG,	0001B	;置充电过程被应急中断的标志位
+	ANDIM	PWMC1,		1110B	;禁能PWM1输出，关闭充电功能
 	JMP	CHARGE_BAT_CTRL_END
 
 CHARGE_TAG:
-	LDA	ALREADY_ENTER		;如果主电源供电正常，则检查是否已经进入充电状态
-	BA0	CHARGE_DURATION		;如果已经进入充电状态
+	LDA	ALREADY_ENTER		;当前处于主电状态，检查是否已经进入充电状态
+	BA0	CHARGE_DURATION		;如果已经进入充电状态，则跳转
 
 	ADI	BAT_STATE,	0100B		
-	BA2	CHARGE_BAT_CTRL_END	;不需要对电池充电
+	BA2	CHARGE_BAT_CTRL_END	;不需要对电池充电，跳转
 	
-	CALL	CHARGE_BAT_ENABLE	;如果电池电压过低，则开始对电池充电
-
-	JMP	CHARGE_BAT_CTRL_END	;不需要对电池充电
+	CALL	CHARGE_BAT_ENABLE	;电池电压过低，开始对电池充电
+	JMP	CHARGE_BAT_CTRL_END
 	
 CHARGE_DURATION:
-	ADI	F_RESUME_CHG,	0001B
-	BA0	CHARGE_TAG_2
+	LDI	TBR,		0001B	;载入0001B 至累加器A
+	AND	PWMC1
+	BA0	CHARGE_TAG_2		;如果PWM1已经使能，即已经打开充电功能，则跳转
 	
-	ORIM	PWMC1,		0001B	;恢复充电
+	ORIM	PWMC1,		0001B	;使能PWM1，打开充电功能
+	CALL	RE_CALC_TIME		;应急之后，重新计算待充电时长
 
 CHARGE_TAG_2:
 	ADI	F_TIME,		1000B
@@ -1213,27 +1202,12 @@ CHARGE_TAG_2:
 	
 IS_BAT_FULL:
 	LDA	BAT_STATE
-	BA1	STOP_CHARGE		;电池已充满
+	BA1	STOP_CHARGE		;电池已充满，跳转
 	
-	JMP	CHARGE_BAT_CTRL_END
+	JMP	CHARGE_BAT_CTRL_END	;电池未充满，跳转
 	
 STOP_CHARGE:
 	CALL	CHARGE_BAT_DISABLE
-	JMP	CHARGE_BAT_CTRL_END
-
-IN_EMERGENCY:
-	ANDIM	ALREADY_ENTER,	1110B	;清已经开始充电标志位
-
-	LDI	PWMC1,		0000B	;PWM1 Clock = tosc = 4M
-	LDI	PWMP10,		00H	;周期为0个PWM0 Clock
-	LDI	PWMP11,		00H	
-	LDI	PWMD10,		00H	;无微调
-	LDI	PWMD11,		0DH	;占空比为100%
-	LDI	PWMD12,		07H
-	ORIM	PWMC1,		0001B	;使能PWM1输出
-
-SET_PWR_DOWN_BIT:
-	ORIM	SYSTEM_STATE,	0001B
 
 CHARGE_BAT_CTRL_END:
 	RTNI
