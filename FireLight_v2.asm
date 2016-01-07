@@ -815,8 +815,6 @@ RESET:
 	CALL	PRE_START_PWR_CHK	;检查主电源是否正常，如异常则一直等待，直至恢复
 	CALL	PRE_START_TYPE_CHK	;判断灯具的电池类型与光源类型
 	
-	CALL	CHARGE_BAT_ENABLE	;上电后，即开始对电池进行充电
-
 MAIN_LOOP:
 	CALL	CHARGE_BAT_CTRL		;[充电控制]  根据主电源状态、待充电时长、电池是否充满标志位等进行电池充电控制
 	CALL	EMERGENCY_CTRL		;[放电控制]  主电源停电后的应急放电控制，退出应急状态时，计算此次应急放电时长
@@ -1044,6 +1042,7 @@ WAIT_PWR_NML:
 	BC	WAIT_AD_RESULT		;如果未达到最小上电电压，则一直等待电压升至最小上电电压之上。
 
 PRE_START_PWR_CHK_END:
+	CALL	CHARGE_BAT_ENABLE	;上电后，即开始对电池进行充电
 	RTNI
 
 
@@ -1221,7 +1220,7 @@ CHARGE_BAT_CTRL_END:
 ;应急时长清零
 ;***********************************************************
 EMERGENCY_ENABLE:
-	ORIM	SYSTEM_STATE,	0001B	;置停电标志位
+	ORIM	SELF_STATE,	0001B	;置停电标志位
 	ORIM	ALREADY_ENTER,	0010B	;置标志位，表明已打开应急放电功能
 	
 	LDI	CNT0_EMERGENCY,	00H	;应急时长清零
@@ -1234,8 +1233,15 @@ EMERGENCY_ENABLE:
 	LDI	PWMD00,		00H	;无微调
 	LDI	PWMD01,		0EH	;占空比为50%
 	LDI	PWMD02,		03H
-	;ORIM	PWMC0,		0001B	;使能PWM0输出
-	CALL	EN_PWM0_DLY_20MS
+
+	ANDIM	PORTE,		1101B	;PE.1输出低电平
+
+	CALL	DELAY_5MS		;延时20ms
+	CALL	DELAY_5MS
+	CALL	DELAY_5MS
+	CALL	DELAY_5MS
+
+	ORIM	PWMC0,		0001B	;使能PWM0输出	
 
 EMERGENCY_ENABLE_END:
 	RTNI
@@ -1245,8 +1251,14 @@ EMERGENCY_ENABLE_END:
 ;禁能PWM0，关闭应急功能
 ;***********************************************************
 EMERGENCY_DISABLE:
-	;LDI	PWMC0,		0000B	;禁能PWM0
-	CALL	DIS_PWM0_DLY_20MS
+	ANDIM	PWMC0,		1110B	;关闭PWM0输出
+
+	CALL	DELAY_5MS		;延时20ms
+	CALL	DELAY_5MS
+	CALL	DELAY_5MS
+	CALL	DELAY_5MS
+
+	ORIM	PORTE,		0010B	;PE.1输出高电平
 
 EMERGENCY_DISABLE_END:
 	RTNI
@@ -1287,7 +1299,8 @@ OVER_30:				;即使20+20小时，也不会发生溢出
 	ADCM	CNT2_CHARGE
 	
 ADJUST_TIME:
-	SUB	CNT0_CHARGE,	00H	;将待充电时长与20小时作比较
+	LDI	TBR,		00H	;将待充电时长与20小时作比较
+	SUB	CNT0_CHARGE
 	LDI	TBR,		0BH
 	SBC	CNT1_CHARGE
 	LDI	TBR,		04H
@@ -1304,10 +1317,46 @@ RE_CALC_TIME_END:
 
 
 ;***********************************************************
+;根据放电时长，置放电时长标志
+;***********************************************************
+SET_EMER_DURATION:
+	SBI	CNT0_EMERGENCY,	0CH	;和5分钟比较(0x12C)
+	LDI	TBR,		02H
+	SBC	CNT1_EMERGENCY
+	LDI	TBR,		01H
+	SBC	CNT2_EMERGENCY
+
+	BNC	SED_LESS_5_MINUTE	;应急时长小于5分钟
+
+	SBI	CNT0_EMERGENCY,	08H	;和30分钟比较(0x708)
+	LDI	TBR,		00H
+	SBC	CNT1_EMERGENCY
+	LDI	TBR,		07H
+	SBC	CNT2_EMERGENCY
+
+	BNC	SED_LESS_30_MINUTE	;应急时长小于30分钟
+
+SED_MORE_30_MINUTE:			;应急时长大于30分钟
+	ORIM	DURATION_EMER,	0100B
+	JMP	EMERGENCY_CTRL_END
+
+SED_LESS_5_MINUTE:
+	ORIM	DURATION_EMER,	0001B
+	JMP	EMERGENCY_CTRL_END
+	
+SED_LESS_30_MINUTE:
+	ORIM	DURATION_EMER,	0010B
+	JMP	EMERGENCY_CTRL_END
+
+SET_EMER_DURATION_END:
+	RTNI
+
+
+;***********************************************************
 ;应急放电控制
 ;主电源停电后的应急放电控制。
 ;何时开始应急放电:主电源AD引脚电压低于1.115V后
-;何时停止应急放电:主电源AD引脚电压高于1.396V后，或是电池耗尽(电池AD引脚电压低于0.96V)，或是按键长按7秒亦可停止应急放电
+;何时停止应急放电:主电源AD引脚电压高于1.396V后，或是电池耗尽(电池AD引脚电压低于0.96V)，或是按键长按7秒亦可停止应急放电，或是检测到任何故障
 ;停止应急放电时，得出应急放电时长
 ;***********************************************************
 EMERGENCY_CTRL:
@@ -1354,50 +1403,22 @@ SMALL_THAN_1P396V:
 
 
 STOP_EMERGENCY:
-	ANDIM	SYSTEM_STATE,	1110B	;清除停电标志位
 	ANDIM	ALREADY_ENTER,	1101B	;清除已经开始应急标志位
-
-BAT_DOWN:	
+	LDI	SELF_STATE,	0000B	;返回主电状态	
 	CALL	EMERGENCY_DISABLE
-
-	SBI	CNT0_EMERGENCY,	0CH	;和5分钟比较(0x12C)
-	LDI	TBR,		02H
-	SBC	CNT1_EMERGENCY
-	LDI	TBR,		01H
-	SBC	CNT2_EMERGENCY
-
-	BNC	LESS_5_MINUTE		;应急时长小于5分钟
-
-	SBI	CNT0_EMERGENCY,	08H	;和30分钟比较(0x708)
-	LDI	TBR,		00H
-	SBC	CNT1_EMERGENCY
-	LDI	TBR,		07H
-	SBC	CNT2_EMERGENCY
-
-	BNC	LESS_30_MINUTE		;应急时长小于30分钟
-
-MORE_30_MINUTE:				;应急时长大于30分钟
-	ORIM	DURATION_EMER,	0100B
-	CALL	RE_CALC_TIME		;发生了应急放电事件，重新计算待充电时长
+	CALL	SET_EMER_DURATION	;更新本次应急时长标志位
 	JMP	EMERGENCY_CTRL_END
-
-LESS_5_MINUTE:
-	ORIM	DURATION_EMER,	0001B
-	CALL	RE_CALC_TIME		;发生了应急放电事件，重新计算待充电时长
-	JMP	EMERGENCY_CTRL_END
-	
-LESS_30_MINUTE:
-	ORIM	DURATION_EMER,	0010B
-	CALL	RE_CALC_TIME		;发生了应急放电事件，重新计算待充电时长
-	JMP	EMERGENCY_CTRL_END
-	
 
 EMERGENCY_CNT:
 	ADI	PRESS_DURATION,	1000B	;判断按键是否被按下超过7秒
-	BA3	EMERG_CNT_START
+	BA3	EMERG_CNT_START		;没有按键持续7秒事件，则跳转
 
+	ANDIM	ALREADY_ENTER,	1101B	;清"已经开始停电应急"标志位
+	;ANDIM	STSYEM_STATUS,	00H	;返回主电状态
 	CALL	EMERGENCY_DISABLE	;关闭应急
-	CALL	PRE_START_PWR_CHK
+	CALL	SET_EMER_DURATION	;更新本次应急时长标志位
+	CALL	PRE_START_PWR_CHK	;等待主电源恢复正常
+	JMP	EMERGENCY_CTRL_END
 
 EMERG_CNT_START:	
 	ADI	F_1S,		0001B	;每秒检查一次
@@ -1423,10 +1444,18 @@ EMERGENCY_BATTERY:			;检查电池是否已经耗尽
 
 	ANDIM	FLAG_OCCUPIED,	1101B	;释放对通道1最终结果的锁定
 
-	BNC	EMERGENCY_CTRL_END
-	JMP	BAT_DOWN		;
+	BNC	EMERGENCY_ALARM_CHK	;如果>0.96V，则跳转
+	JMP	WAIT_PWR_RESUME		;
 
+EMERGENCY_ALARM_CHK:
+	LDA	ALARM_STATE
+	BAZ	EMERGENCY_CTRL_END	;如果没有任何故障，则跳转
 
+WAIT_PWR_RESUME:	
+	CALL	EMERGENCY_DISABLE	;关闭应急
+	CALL	SET_EMER_DURATION	;置放电时长标志位
+	CALL	PRE_START_PWR_CHK	;等待主电源恢复正常
+	
 EMERGENCY_CTRL_END:
 	RTNI
 
@@ -1590,8 +1619,13 @@ GREEN:
 	BA1	GREEN_1HZ
 	BA2	GREEN_3HZ
 
-	LDA	SYSTEM_STATE
-	BNZ	GREEN_OFF		;如果当前系统为应急状态，则绿灯灭
+
+	ADI	SELF_STATE,	0001B
+	BA0	GREEN_ON		;如果当前为主电状态，则绿灯亮
+	ADI	SELF_STATE,	1000B
+	BA3	GREEN_OFF		;如果当前为停电状态，则绿灯灭
+
+GREEN_ON:	
 	ORIM	PORTC,		0010B	;如果当前系统主电源正常，则绿灯亮
 	JMP	ALARM_BAT
 
