@@ -1502,14 +1502,14 @@ BAT_OPEN:
 
 	;ADI	SELF_STATE,	1000B	;判断是否处于手动自检状态
 	;BA3	BAT_STATE_CHK_END
-	LDI	TBR,		0110B
-	AND	SELF_STATE
-	BAZ	BAT_BEEP		;如果在非自检状态下检测到电池开路故障，则跳转
+	;LDI	TBR,		0110B
+	;AND	SELF_STATE
+	;BAZ	BAT_BEEP		;如果在非自检状态下检测到电池开路故障，则跳转
 
-	ORIM	FIXED_SELF_CHK,	0001B	;在自检状态下检测到电池开路故障，则置不能退出自检状态标志位
+	;ORIM	FIXED_SELF_CHK,	0001B	;在自检状态下检测到电池开路故障，则置不能退出自检状态标志位
 	
-BAT_BEEP:
-	ORIM	BEEP_CTL,	0001B	;使蜂鸣器每50秒蜂鸣2秒
+;BAT_BEEP:
+;	ORIM	BEEP_CTL,	0001B	;使蜂鸣器每50秒蜂鸣2秒
 	JMP	BAT_STATE_CHK_END
 
 BAT_FULL:
@@ -1551,14 +1551,14 @@ ERROR_LIGHT:
 	;ADI	SELF_STATE,	1000B	;判断当前是否处于手动自检状态
 	;BA3	PROCESS_LIGHT_END
 
-	LDI	TBR,		0110B
-	AND	SELF_STATE
-	BAZ	LIGHT_BEEP		;如果在非自检状态下检测到光源故障，则跳转
+	;LDI	TBR,		0110B
+	;AND	SELF_STATE
+	;BAZ	LIGHT_BEEP		;如果在非自检状态下检测到光源故障，则跳转
 
-	ORIM	FIXED_SELF_CHK,	0001B	;在自检状态下检测到光源故障，则置不能退出自检状态标志位
+	;ORIM	FIXED_SELF_CHK,	0001B	;在自检状态下检测到光源故障，则置不能退出自检状态标志位
 	
-LIGHT_BEEP:
-	ORIM	BEEP_CTL,	0001B	;如果发生光源故障，则蜂鸣器应每50秒蜂鸣2秒
+;LIGHT_BEEP:
+	;ORIM	BEEP_CTL,	0001B	;如果发生光源故障，则蜂鸣器应每50秒蜂鸣2秒
 
 PROCESS_LIGHT_END:
 	RTNI
@@ -1709,7 +1709,8 @@ BEEP_PROCESS:
 	JMP	TIPS_PROCESS_END
 
 THERE_ARE_ALARM:
-	LDA	BEEP_CTL
+	ORIM	BEEP_CTL,	0001B	;如果有任何故障，则蜂鸣器应每50秒蜂鸣2秒
+	;LDA	BEEP_CTL
 	BA0	BEEP_ON_GOING		;如果当前蜂鸣器应提示故障，则跳转
 	JMP	BEEP_OFF		;如果当前没有故障需由蜂鸣器做出提示，则跳转
 	
