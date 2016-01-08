@@ -242,7 +242,8 @@ CLEAR_AC 	EQU 	71H 		;清除累加器A 值用寄存器
 TEMP 		EQU 	72H 		;临时寄存器
 
 
-BTN_PRE_STA	EQU	73H		;bit0储存上一次按键状态,0:按下,1:未按下
+BTN_PRE_STA	EQU	73H		;bit0储存当前按键状态,0:按下,1:未按下
+					;bit1储存上一次按键状态,0:按下,1:未按下
 BTN_PRESS_CNT0	EQU	74H		;按键按下时长，单位为168ms
 BTN_PRESS_CNT1	EQU	75H
 
@@ -252,6 +253,7 @@ CNT1_168MS	EQU	77H
 
 F_168MS		EQU	78H		;每168ms将bit0 = 1, 供翻转LED使用
 					;每168ms将bit1 = 1, 供按键检测使用
+					;每168ms将bit2 = 1, 供通过按键退出月检或年检使用
 
 CMP_RESUME0	EQU	79H		;检测到电源电压大于此数值时，表示市电供电已恢复，应关闭应急.(1.396V -> 0x8E)
 CMP_RESUME1	EQU	7AH
@@ -388,7 +390,7 @@ J_168MS:
 	LDI	CNT0_168MS,	04H	;8ms * 21 = 168ms
 	LDI	CNT1_168MS,	01H
 
-	ORIM	F_168MS,	0011B	;设置 "168ms 到"标志，1)bit0供翻转LED用，2)bit1供按键检测用
+	ORIM	F_168MS,	0111B	;设置 "168ms 到"标志，1)bit0供翻转LED用，2)bit1供按键检测用，3)bit2供通过按键退出月检可年检用
 
 	ADI	BEEP_BTN,	0001B
 	BA0	J_1S
@@ -1701,7 +1703,10 @@ BEEP_PROCESS:
 	LDA	ALARM_STATE
 	BNZ	THERE_ARE_ALARM		;如果有电池、光源或是放电时长不足的故障，则跳转
 
-	JMP	BEEP_OFF		;如果没有故障，则跳转
+	ADI	BEEP_BTN,	0001B
+	BA0	BEEP_OFF
+	;JMP	BEEP_OFF		;如果没有故障，则跳转
+	JMP	TIPS_PROCESS_END
 
 THERE_ARE_ALARM:
 	LDA	BEEP_CTL
@@ -1871,7 +1876,11 @@ KEY_ERROR: 				;错误键值处理
 	LDI	BTN_PRESS_CNT1,	00H
 	
 KEY_CHECK_PROCESS_OVER: 		;按键扫描及处理结束，返回
-	ANDIM	TEMP,		0001B	;
+	ANDIM	BTN_PRE_STA,	0001B	;只保留上一次的键值
+	ADIM	BTN_PRE_STA,	0001B	;将bit0的值转存至bit1
+	ANDIM	BTN_PRE_STA,	0010B	;清bit0
+	ANDIM	TEMP,		0001B	;取当前按键值
+	OR	BTN_PRE_STA		;BTN_PRE_STA | TEMP -> A	
 	STA	BTN_PRE_STA		;TEMP -> BTN_PRE_STA
 	
 KEY_PROCESS_END:
@@ -1892,8 +1901,8 @@ KEY_PROCESS_END:
 ;
 ;***********************************************************
 SELF_CHK_STATE:
-	LDA	SYSTEM_STATE
-	BA0	SELF_CHK_STATE_END	;当前处于停电状态，不作自检标志位检查
+	SBI	SELF_STATE,	0001B
+	BAZ	SELF_CHK_STATE_END	;当前处于停电状态，不作自检标志位检查
 
 	LDA	F_TIME
 	BA2	SET_YEAR_BIT		;如果1年时间已到，则跳转
@@ -1909,9 +1918,9 @@ MANUAL_CHK:
 	AND	SELF_STATE
 	BAZ	SCT_SET_EMEG		;如果按键被按下，并且系统未进入月检或是年检状态，则跳转
 
-	LDI	SELF_STATE,	00H	;如果按键被按下，并且系统处于月检或是年检状态，则退出
-	LDI	GREEN_FLASH,	00H	;月检或是年检状态，停止绿灯的闪烁
-	LDI	FIXED_SELF_CHK,	00H	;清 因故障不能退出自检状态标志位
+	;LDI	SELF_STATE,	00H	;如果按键被按下，并且系统处于月检或是年检状态，则退出
+	;LDI	GREEN_FLASH,	00H	;月检或是年检状态，停止绿灯的闪烁
+	;LDI	FIXED_SELF_CHK,	00H	;清 因故障不能退出自检状态标志位
 	JMP	SELF_CHK_STATE_END
 
 SCT_SET_EMEG:
@@ -1934,7 +1943,11 @@ SCS_LESS_3S:
 	ADI	BTN_PRE_STA,	01H
 	BA0	SELF_CHK_STATE_END	;如果当前按键为按下状态，则跳转
 	
-	LDI	SELF_STATE,	00H	;退出月检、年检、模拟停电、手动月检、手动年检状态
+	;LDI	SELF_STATE,	00H	;退出月检、年检、模拟停电、手动月检、手动年检状态
+	;LDI	FIXED_SELF_CHK,	00H	;清 因故障不能退出自检状态标志位
+
+	LDI	SELF_STATE,	00H	;如果按键被按下，并且系统处于月检或是年检状态，则退出
+	LDI	GREEN_FLASH,	00H	;月检或是年检状态，停止绿灯的闪烁
 	LDI	FIXED_SELF_CHK,	00H	;清 因故障不能退出自检状态标志位
 
 	JMP	SELF_CHK_STATE_END
@@ -2036,11 +2049,11 @@ DIS_PWM0_DLY_20MS_END:
 ;***********************************************************
 SELF_CHK_PROCESS:
 
-	LDA	SYSTEM_STATE
-	BA0	SELF_CHK_PROCESS_END	;如果停电，则跳转
+	SBI	SELF_STATE,	0001B
+	BAZ	SELF_CHK_PROCESS_END	;如果停电，则跳转
 
-	LDA	SELF_STATE		;检查自检状态标志
-	BA0	SCP_EMERGENCY		;如果模拟停电标志位为1，则跳转
+	SBI	SELF_STATE,	1001B	;检查模拟自检状态标志
+	BAZ	SCP_EMERGENCY		;如果模拟停电标志位为1，则跳转
 
 	LDA	SELF_STATE
 	BA1	SCP_MONTH		;如果手动月检标志为1，则跳转
