@@ -1821,11 +1821,11 @@ KEY_RELEASED:
 
 KEY_PRESSED:	
 	LDA	BTN_PRE_STA		;将上一次按键状态载入累加器A 中
-	BA0	BUTTON_BEEP_STOP	;如果上一次未按下，则跳转
+	BA0	BUTTON_BEEP_START	;如果上一次未按下，则跳转
 
 	JMP	KEY_CMP
 	
-BUTTON_BEEP_STOP:
+BUTTON_BEEP_START:
 	ORIM	BEEP_BTN,	0001B	;置按键蜂鸣标志位
 	ORIM	TCTL1,		1000B	;让蜂鸣器开始蜂鸣
 
@@ -1874,6 +1874,7 @@ KEY_ERROR: 				;错误键值处理
 ;ON_RELEASED:
 	LDI	BTN_PRESS_CNT0,	00H
 	LDI	BTN_PRESS_CNT1,	00H
+	JMP	KEY_PROCESS_END
 	
 KEY_CHECK_PROCESS_OVER: 		;按键扫描及处理结束，返回
 	ANDIM	BTN_PRE_STA,	0001B	;只保留上一次的键值
@@ -1946,7 +1947,7 @@ SCS_LESS_3S:
 	;LDI	SELF_STATE,	00H	;退出月检、年检、模拟停电、手动月检、手动年检状态
 	;LDI	FIXED_SELF_CHK,	00H	;清 因故障不能退出自检状态标志位
 
-	LDI	SELF_STATE,	00H	;如果按键被按下，并且系统处于月检或是年检状态，则退出
+	LDI	SELF_STATE,	00H	;如果按键被松开，并且系统处于月检或是年检状态，则退出
 	LDI	GREEN_FLASH,	00H	;月检或是年检状态，停止绿灯的闪烁
 	LDI	FIXED_SELF_CHK,	00H	;清 因故障不能退出自检状态标志位
 
@@ -2058,17 +2059,8 @@ SELF_CHK_PROCESS:
 	LDA	SELF_STATE
 	BA1	SCP_MONTH		;如果手动月检标志为1，则跳转
 
-	;ADI	ALREADY_ENTER,	0100B	
-	;BA2	SCP_CHK_YEAR_BIT	;如果上一次不是月检，则跳转
-	;JMP	SCP_ARRIVE_120S		;如果上一次月检标志为1，本次为0，则退出月检	
-
-;SCP_CHK_YEAR_BIT:
 	LDA	SELF_STATE
 	BA2	SCP_YEAR		;如果手动年检标志为1，则跳转
-
-	;ADI	ALREADY_ENTER,	1000B	
-	;BA3	SCP_CLEAR_ALL		;如果上一次不是年检，则跳转
-	;JMP	SCP_ARRIVE_30MIN	;如果上一次年检标志为1，本次为0，则退出年检
 
 SCP_CLEAR_ALL:
 	JMP	SCP_DIS_EMERGENCY	;如果自检标志均为0，则关闭应急
@@ -2125,7 +2117,7 @@ SCP_MONTH_1S:
 
 	ANDIM	FLAG_OCCUPIED,	1101B	;释放对通道1最终结果的锁定
 
-	BNC	SELF_CHK_PROCESS_END	;如果电池还未耗尽，则跳转
+	BNC	SCP_MONTH_ALARM_CHK	;如果电池还未耗尽，则跳转
 
 	ORIM	ALARM_STATE,	0100B	;置放电时长不足标志位
 
@@ -2134,7 +2126,29 @@ SCP_MONTH_1S:
 
 	ORIM	BEEP_CTL,	0001B	;如果在月检状态下，检测到放电时长不足120秒，则蜂鸣器应每50秒蜂鸣2秒
 	ORIM	FIXED_SELF_CHK,	0001B	;在月检状态下，检测到放电时长不足120秒，则置因故障不能退出自检状态标志位
+
+SCP_MONTH_WHILE:			;如果在月检状态下，检测到故障，则关闭应急，等待主电源恢复
+	CALL	DIS_PWM0_DLY_20MS	;关闭PWM0输出
+	LDI	SELF_STATE,	0000B	;清月检标志位
+	ANDIM	GREEN_FLASH,	1101B	;让绿灯停止以1HZ的频率闪烁	
+	ANDIM	ALREADY_ENTER,	1011B	;清在手动月检状态下已经开始应急的标志位
+
+	ORIM	DURATION_EMER,	0001B	;应急时长为2分钟，置应急时长小于5分钟标志位
+	;CALL	RE_CALC_TIME		;根据应急时长，重新计算待充电时长
+	CALL	PRE_START_PWR_CHK	;等待主电源恢复		
+	JMP	SELF_CHK_PROCESS_END
+
+SCP_MONTH_ALARM_CHK:
+	LDA	ALARM_STATE		
+	BNZ	SCP_MONTH_HAVE_ALARM	;如果在月检状态下，检测到任何故障，则跳转
+
+	ANDIM	FIXED_SELF_CHK,	0000B	;清"因故障不能退出自检"标志位
+	JMP	SELF_CHK_PROCESS_END
 	
+SCP_MONTH_HAVE_ALARM:
+	ORIM	FIXED_SELF_CHK,	0001B	;在月检状态下，检测到故障，则置因故障不能退出自检状态标志位
+	JMP	SELF_CHK_PROCESS_END
+
 ;---------------------------------------------------------------------------
 
 SCP_ARRIVE_120S:
@@ -2147,7 +2161,7 @@ SCP_ARRIVE_120S:
 	ANDIM	ALREADY_ENTER,	1011B	;清在手动月检状态下已经开始应急的标志位
 
 	ORIM	DURATION_EMER,	0001B	;应急时长为2分钟，置应急时长小于5分钟标志位
-	CALL	RE_CALC_TIME		;根据应急时长，重新计算待充电时长
+	;CALL	RE_CALC_TIME		;根据应急时长，重新计算待充电时长
 	JMP	SELF_CHK_PROCESS_END
 	
 ;---------------------------------------------------------------------------
@@ -2169,12 +2183,21 @@ SCP_YEAR_1S:
 
 	ANDIM	F_1S,		1110B	;清供应急计时用的1秒标志位
 
+	SBI	CNT0_EMERGENCY,	08H	;和30分钟比较(0x708)
+	LDI	TBR,		00H
+	SBC	CNT1_EMERGENCY
+	LDI	TBR,		07H
+	SBC	CNT2_EMERGENCY
+
+	BC	SCP_YEAR_BAT_CHK	;如果应急时长已超过30分钟，则跳转
+
 	ADIM	CNT0_EMERGENCY,	01H	;应急时长加1
 	LDI	TBR,		00H
 	ADCM	CNT1_EMERGENCY
 	LDI	TBR,		00H
 	ADCM	CNT2_EMERGENCY
-	
+
+SCP_YEAR_BAT_CHK:	
 	ORIM	FLAG_OCCUPIED,	0010B	;锁定通道1最终结果
 
 	LDA	CHN1_FINAL_RET1,01H
@@ -2186,32 +2209,19 @@ SCP_YEAR_1S:
 
 	BNC	SELF_CHK_PROCESS_END	;如果电池还未耗尽，则跳转
 
-	SBI	CNT0_EMERGENCY,	08H	;和30分钟比较(0x708)
-	LDI	TBR,		00H
-	SBC	CNT1_EMERGENCY
-	LDI	TBR,		07H
-	SBC	CNT2_EMERGENCY	
-
-	BC	SCP_ARRIVE_30MIN
-
 	ORIM	ALARM_STATE,	0100B	;置应急放电时长不足标志位
 
 	;ADI	SELF_STATE,	1000B
 	;BA3	SCP_ARRIVE_30MIN
 
 	ORIM	BEEP_CTL,	0001B	;如果在手动年检状态下，检测到放电时长不足30分钟，则蜂鸣器应每50秒蜂鸣2秒
-	ORIM	FIXED_SELF_CHK,	0001B	;在月检状态下，检测到放电时长不足120秒，则置因故障不能退出自检状态标志位
-	
-;---------------------------------------------------------------------------
+	;ORIM	FIXED_SELF_CHK,	0001B	;在月检状态下，检测到放电时长不足120秒，则置因故障不能退出自检状态标志位
 
-SCP_ARRIVE_30MIN:
-	LDA	FIXED_SELF_CHK
-	BA0	SELF_CHK_PROCESS_END	;如果自检过程中，检测到有故障，则即使到了30分钟，也不能自动退出年检状态
-
+SCP_YEAR_WHILE:				;如果在年检状态下，检测到故障，则关闭应急，等待主电源恢复
 	CALL	DIS_PWM0_DLY_20MS	;关闭PWM0输出
 	LDI	SELF_STATE,	0000B	;清年检标志位
-	ANDIM	GREEN_FLASH,	1011B	;让绿灯停止以3HZ的频率闪烁
-	ANDIM	ALREADY_ENTER,	0111B	;清已经进入手动年检标志位	
+	ANDIM	GREEN_FLASH,	1011B	;让绿灯停止以3HZ的频率闪烁	
+	ANDIM	ALREADY_ENTER,	0111B	;清在年检状态下已经开始应急的标志位
 
 	SBI	CNT0_EMERGENCY,	0CH	;和5分钟比较(0x12C)
 	LDI	TBR,		02H
@@ -2219,7 +2229,7 @@ SCP_ARRIVE_30MIN:
 	LDI	TBR,		01H
 	SBC	CNT2_EMERGENCY
 
-	BNC	YEAR_LESS_5_MINUTE	;应急时长小于5分钟
+	BNC	YEAR_L_5_MINUTE		;应急时长小于5分钟
 
 	SBI	CNT0_EMERGENCY,	08H	;和30分钟比较(0x708)
 	LDI	TBR,		00H
@@ -2227,22 +2237,26 @@ SCP_ARRIVE_30MIN:
 	LDI	TBR,		07H
 	SBC	CNT2_EMERGENCY
 
-	BNC	YEAR_LESS_30_MINUTE	;应急时长小于30分钟
+	BNC	YEAR_L_30_MINUTE	;应急时长小于30分钟
 
-YEAR_MORE_30_MINUTE:			;应急时长大于30分钟
+YEAR_M_30_MINUTE:			;应急时长大于30分钟
 	ORIM	DURATION_EMER,	0100B
-	CALL	RE_CALC_TIME		;发生了应急放电事件，重新计算待充电时长
+	;CALL	RE_CALC_TIME		;发生了应急放电事件，重新计算待充电时长
 	JMP	SELF_CHK_PROCESS_END
 
-YEAR_LESS_5_MINUTE:
+YEAR_L_5_MINUTE:
 	ORIM	DURATION_EMER,	0001B
-	CALL	RE_CALC_TIME		;发生了应急放电事件，重新计算待充电时长
+	;CALL	RE_CALC_TIME		;发生了应急放电事件，重新计算待充电时长
 	JMP	SELF_CHK_PROCESS_END
 	
-YEAR_LESS_30_MINUTE:
+YEAR_L_30_MINUTE:
 	ORIM	DURATION_EMER,	0010B
-	CALL	RE_CALC_TIME		;发生了应急放电事件，重新计算待充电时长
+	;CALL	RE_CALC_TIME		;发生了应急放电事件，重新计算待充电时长
 	JMP	SELF_CHK_PROCESS_END
+
+	
+	CALL	PRE_START_PWR_CHK	;等待主电源恢复		
+	JMP	SELF_CHK_PROCESS_END	
 	
 ;---------------------------------------------------------------------------
 	
