@@ -1642,8 +1642,8 @@ GREEN:
 
 	ADI	SELF_STATE,	0001B
 	BA0	GREEN_ON		;如果当前为主电状态，则绿灯亮
-	ADI	SELF_STATE,	1000B
-	BA3	GREEN_OFF		;如果当前为停电状态，则绿灯灭
+	LDA	SELF_STATE
+	BA0	GREEN_OFF		;如果当前为停电，或模拟停电状态，则绿灯灭
 
 GREEN_ON:	
 	ORIM	PORTC,		0010B	;如果当前系统主电源正常，则绿灯亮
