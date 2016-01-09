@@ -264,6 +264,9 @@ PRESS_DURATION	EQU	7BH		;按键被按下持续时长标志
 					;bit2 = 1;  被按下时长大于5秒，小于7秒
 					;bit3 = 1;  被按下时长大于7秒
 
+CMP_BAT_SHORT0	EQU	7CH		;检测到电池电压小于此数值时(0.3V -> 0x1E)，视为电池充电回路短路
+CMP_BAT_SHORT1	EQU	7DH
+
 
 ;Bank1(以下寄存器真实地址应加上80H)
 ;------------------------------------------------------------------
@@ -988,6 +991,9 @@ REGISTER_INITIAL:
 	LDI	CMP_BAT_CHARGE0,0AH	;检测到电池电压小于此数值时(1.35V -> 0x8A)，视为电池得开始充电了
 	LDI	CMP_BAT_CHARGE1,08H
 
+	LDI	CMP_BAT_SHORT0,	0EH	;检测到电池电压小于此数值时(0.3V -> 0x1E)，视为电池充电回路短路
+	LDI	CMP_BAT_SHORT1,	01H
+
 	LDI	CMP_LIGHT0,	04H	;供光源检测使用,AD转换结果小于此数值时(0.2V -> 0x14)，表示光源产生故障
 	LDI	CMP_LIGHT1,	01H
 	
@@ -1519,6 +1525,18 @@ BAT_FULL:
 
 BAT_NEED_CHARGE:
 	ORIM	BAT_STATE,	0100B	;置电池需要重新充电标志位
+
+	LDA	CHN1_FINAL_RET1,01H	
+	SUB	CMP_BAT_SHORT0		;判断电池充电回路是否短路
+	LDA	CHN1_FINAL_RET2,01H
+	SBC	CMP_BAT_SHORT1
+	BC	BAT_SHORT		;AD转换结果小于0.3V，电池充电回路短路
+
+	ANDIM	ALARM_STATE,	1110B	;清电池故障标志位
+	JMP	BAT_STATE_CHK_END
+
+BAT_SHORT:
+	ORIM	ALARM_STATE,	0001B	;置电池故障标志位
 	JMP	BAT_STATE_CHK_END
 
 BAT_STATE_CHK_END:
