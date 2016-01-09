@@ -1507,14 +1507,14 @@ BAT_OPEN:
 	;BAZ	BAT_BEEP		;如果在非自检状态下检测到电池开路故障，则跳转
 
 	;ORIM	FIXED_SELF_CHK,	0001B	;在自检状态下检测到电池开路故障，则置不能退出自检状态标志位
-	
+
 ;BAT_BEEP:
 ;	ORIM	BEEP_CTL,	0001B	;使蜂鸣器每50秒蜂鸣2秒
 	JMP	BAT_STATE_CHK_END
 
 BAT_FULL:
 	ORIM	BAT_STATE,	0010B	;置电池已充满标志位
-	ANDIM	BAT_STATE,	1011B	;清电池需要重新充电标志位
+	;ANDIM	BAT_STATE,	1011B	;清电池需要重新充电标志位
 	JMP	BAT_STATE_CHK_END
 
 BAT_NEED_CHARGE:
@@ -1950,6 +1950,7 @@ SCS_LESS_3S:
 
 	LDI	SELF_STATE,	00H	;如果按键被松开，并且系统处于月检或是年检状态，则退出
 	LDI	GREEN_FLASH,	00H	;月检或是年检状态，停止绿灯的闪烁
+	LDI	ALARM_STATE,	00H	;清除所有的故障标志位
 	LDI	FIXED_SELF_CHK,	00H	;清 因故障不能退出自检状态标志位
 
 	JMP	SELF_CHK_STATE_END
