@@ -171,21 +171,12 @@ CNT2_EMERGENCY	EQU	50H
 CMP_EXIT_EMER0	EQU	51H		;检测到电池电压小于此数值时(0.96V -> 0x62)，应该关闭应急放电功能
 CMP_EXIT_EMER1	EQU	52H
 
-CMP_BAT_OPEN0	EQU	53H		;检测到电池电压大于此数值时(1.56V -> 0x9F)，视为电池充电回路开路
-CMP_BAT_OPEN1	EQU	54H
-
-CMP_BAT_FULL0	EQU	55H		;检测到电池电压大于此数值时(1.44V -> 0x93)，视为电池已充满
-CMP_BAT_FULL1	EQU	56H
-
-CMP_BAT_CHARGE0	EQU	57H		;检测到电池电压小于此数值时(1.35V -> 0x8A)，视为电池得开始充电了
-CMP_BAT_CHARGE1	EQU	58H
-
-
-
 BAT_STATE	EQU	59H		;bit0 = 0, 表示充电回路未开路；bit0 = 1, 表示充电回路开路
 					;bit1 = 0, 表示电池未充满；bit1 = 1, 表示电池已充满
 					;bit2 = 0, 表示电池还不需要充电；bit2 = 1, 表示电池需要充电
 					;bit3 = 1, 表示电池电压过低，不能再继续应急放电了
+
+BAT_EXHAUSTED	EQU	5AH		;bit0 = 1, 表示电池电量已耗尽，此时应关闭应急
 
 LIGHT_STATE	EQU	5CH		;bit0 = 1, 表示光源故障
 
@@ -260,8 +251,6 @@ PRESS_DURATION	EQU	7BH		;按键被按下持续时长标志
 					;bit2 = 1;  被按下时长大于5秒，小于7秒
 					;bit3 = 1;  被按下时长大于7秒
 
-CMP_BAT_SHORT0	EQU	7CH		;检测到电池电压小于此数值时(0.3V -> 0x1E)，视为电池充电回路短路
-CMP_BAT_SHORT1	EQU	7DH
 
 
 ;Bank1(以下寄存器真实地址应加上80H)
@@ -1076,17 +1065,7 @@ REGISTER_INITIAL:
 	LDI	CMP_EXIT_EMER0,	02H	;电池电压小于此电压时，关闭应急功能(0.96V -> 0x62)
 	LDI	CMP_EXIT_EMER1,	06H
 
-	LDI	CMP_BAT_OPEN0,	0FH	;电池电压大于此电压时，视为电池充电回路开路(1.56V -> 0x9F)
-	LDI	CMP_BAT_OPEN1,	09H
 
-	LDI	CMP_BAT_FULL0,	03H	;检测到电池电压大于此数值时(1.44V -> 0x93)，视为电池已充满
-	LDI	CMP_BAT_FULL1,	09H
-
-	LDI	CMP_BAT_CHARGE0,0AH	;检测到电池电压小于此数值时(1.35V -> 0x8A)，视为电池得开始充电了
-	LDI	CMP_BAT_CHARGE1,08H
-
-	LDI	CMP_BAT_SHORT0,	0EH	;检测到电池电压小于此数值时(0.3V -> 0x1E)，视为电池充电回路短路
-	LDI	CMP_BAT_SHORT1,	01H
 	
 	LDI	CMP_TYPE00,	0DH	;灯具类型门限0   (0.6V -> 0x3D)
 	LDI	CMP_TYPE01,	03H
@@ -1591,64 +1570,85 @@ EMERGENCY_CTRL_END:
 ;输出
 ;-- BAT_STATE		电池状态，位图形式表示
 ;-- ALARM_STATE.0		故障标志位
+;-- BAT_EXHAUSTED.0	电池电量耗尽标志位
+;判定阈值:
+;电池电压大于(1.56V -> 0x9F)时，视为电池充电回路开路
+;电池电压大于(1.44V -> 0x93)时，视为电池已充满
+;电池电压小于(1.35V -> 0x8A)时，视为电池得开始充电了
+;电池电压小于(0.96V -> 0x62)时，视为电池电池电量已经耗尽，此时应该关闭应急放电功能
+;电池电压小于( 0.3V -> 0x1E)时，视为电池充电回路短路
 ;***********************************************************
 BAT_STATE_CHK:
 
 	ORIM	FLAG_OCCUPIED,	0010B	;锁定通道1最终结果
 
-	LDA	CHN1_FINAL_RET1,01H	
-	SUB	CMP_BAT_OPEN0		;判断电池是否开路
-	LDA	CHN1_FINAL_RET2,01H
-	SBC	CMP_BAT_OPEN1
-	BNC	BAT_OPEN		;AD转换结果大于1.56V，电池开路
+	LDI	TBR,		0FH	;将电池电压和1.56V (0x9F)比较，如果大于1.56V，则判定为电池充电回路开路
+	SUB	CHN1_FINAL_RET1,01H
+	LDI	TBR,		09H
+	SBC	CHN1_FINAL_RET2,01H
+
+	BC	BAT_OPEN		;AD转换结果大于1.56V，电池开路
 	ANDIM	BAT_STATE,	1110B	;清除充电回路开路标志位
 	ANDIM	ALARM_STATE,	1110B	;清除充电回路开路故障标志位
+	
+;---------------------------------------------------------------------------
 
-	LDA	CHN1_FINAL_RET1,01H	
-	SUB	CMP_BAT_FULL0		;判断电池是否充满
-	LDA	CHN1_FINAL_RET2,01H
-	SBC	CMP_BAT_FULL1
-	BNC	BAT_FULL		;AD转换结果大于1.44V，电池已充满
+	LDI	TBR,		03H	;将电池电压和1.44V (0x93)比较，如果大于1.44V，则视为电池已充满
+	SUB	CHN1_FINAL_RET1,01H
+	LDI	TBR,		09H
+	SBC	CHN1_FINAL_RET2,01H
+
+	BC	BAT_FULL		;AD转换结果大于1.44V，电池已充满，跳转
 	ANDIM	BAT_STATE,	1101B	;清除电池已充满标志位
+	
+;---------------------------------------------------------------------------
 
-	LDA	CHN1_FINAL_RET1,01H	
-	SUB	CMP_BAT_CHARGE0		;判断电池是否过低，需要充电了
-	LDA	CHN1_FINAL_RET2,01H
-	SBC	CMP_BAT_CHARGE1
-	BC	BAT_NEED_CHARGE		;AD转换结果小于1.35V，电池需要重新充电
+	LDI	TBR,		0AH	;将电池电压和1.35V (0x8A)比较，如果小于1.35V，则视为电池得开始充电了
+	SUB	CHN1_FINAL_RET1,01H
+	LDI	TBR,		08H
+	SBC	CHN1_FINAL_RET2,01H
+
+	BC	BAT_STATE_CHK_END	;AD转换结果大于1.35V，结束
+
+;---------------------------------------------------------------------------
+
+	ORIM	BAT_STATE,	0100B	;置电池需要重新充电标志位
+
+	LDI	TBR,		02H	;将电池电压小于和0.96V (0x62)比较，如果小于0.96V，则视为电池电池电量已经耗尽，此时应该关闭应急放电功能
+	SUB	CHN1_FINAL_RET1,01H
+	LDI	TBR,		06H
+	SBC	CHN1_FINAL_RET2,01H
+
+	BC	NOT_EXHAUSTED		;电池电量仍未耗尽，跳转
+
+;---------------------------------------------------------------------------
+
+	ORIM	BAT_EXHAUSTED,	0001B	;置电池电量已耗尽标志
+
+	LDI	TBR,		0EH	;将电池电压和0.3V (0x1E)比较，如果小于0.3V，则视为电池充电回路短路
+	SUB	CHN1_FINAL_RET1,01H
+	LDI	TBR,		01H
+	SBC	CHN1_FINAL_RET2,01H
+
+	BNC	BAT_SHORT		;AD转换结果小于0.3V，电池充电回路短路
+
+	ANDIM	ALARM_STATE,	1110B	;清电池故障标志位
 	JMP	BAT_STATE_CHK_END
+	
+;---------------------------------------------------------------------------
 
 BAT_OPEN:
 	ORIM	BAT_STATE,	0001B	;置充电回路开路标志位
 	ORIM	ALARM_STATE,	0001B	;置充电回路开路故障标志位
-
-	;ADI	SELF_STATE,	1000B	;判断是否处于手动自检状态
-	;BA3	BAT_STATE_CHK_END
-	;LDI	TBR,		0110B
-	;AND	SELF_STATE
-	;BAZ	BAT_BEEP		;如果在非自检状态下检测到电池开路故障，则跳转
-
-	;ORIM	FIXED_SELF_CHK,	0001B	;在自检状态下检测到电池开路故障，则置不能退出自检状态标志位
-
-;BAT_BEEP:
-;	ORIM	BEEP_CTL,	0001B	;使蜂鸣器每50秒蜂鸣2秒
 	JMP	BAT_STATE_CHK_END
 
 BAT_FULL:
 	ORIM	BAT_STATE,	0010B	;置电池已充满标志位
-	;ANDIM	BAT_STATE,	1011B	;清电池需要重新充电标志位
+	ANDIM	BAT_STATE,	1011B	;清电池需要重新充电标志位
 	JMP	BAT_STATE_CHK_END
 
-BAT_NEED_CHARGE:
-	ORIM	BAT_STATE,	0100B	;置电池需要重新充电标志位
-
-	LDA	CHN1_FINAL_RET1,01H	
-	SUB	CMP_BAT_SHORT0		;判断电池充电回路是否短路
-	LDA	CHN1_FINAL_RET2,01H
-	SBC	CMP_BAT_SHORT1
-	BC	BAT_SHORT		;AD转换结果小于0.3V，电池充电回路短路
-
-	ANDIM	ALARM_STATE,	1110B	;清电池故障标志位
+NOT_EXHAUSTED:
+	ANDIM	BAT_EXHAUSTED,	1110B	;清电池电量已耗尽标志
 	JMP	BAT_STATE_CHK_END
 
 BAT_SHORT:
