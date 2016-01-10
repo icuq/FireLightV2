@@ -187,10 +187,6 @@ BAT_STATE	EQU	59H		;bit0 = 0, 表示充电回路未开路；bit0 = 1, 表示充电回路开路
 					;bit2 = 0, 表示电池还不需要充电；bit2 = 1, 表示电池需要充电
 					;bit3 = 1, 表示电池电压过低，不能再继续应急放电了
 
-
-CMP_LIGHT0	EQU	5AH		;供光源检测使用,AD转换结果小于此数值时(0.2V -> 0x14)，表示光源产生故障
-CMP_LIGHT1	EQU	5BH
-
 LIGHT_STATE	EQU	5CH		;bit0 = 1, 表示光源故障
 
 
@@ -361,6 +357,28 @@ CHN7_FINAL_RET2	EQU	3EH		;
 
 DET7_CT		EQU	3FH		;ADC 通道7 转换结果个数
 
+;------------------------------------------------------------------
+CHN8_RET0_BAK0	EQU	40H		;ADC CHN8 转换结果低2位备份
+CHN8_RET1_BAK0	EQU	41H		;ADC CHN8 转换结果中4位备份
+CHN8_RET2_BAK0	EQU	42H		;ADC CHN8 转换结果高4位备份
+
+CHN8_RET0_BAK1	EQU	43H		;ADC CHN8 转换结果低2位备份
+CHN8_RET1_BAK1	EQU	44H		;ADC CHN8 转换结果中4位备份
+CHN8_RET2_BAK1	EQU	45H		;ADC CHN8 转换结果高4位备份
+
+CHN8_RET0_BAK2	EQU	46H		;ADC CHN8 转换结果低2位备份
+CHN8_RET1_BAK2	EQU	47H		;ADC CHN8 转换结果中4位备份
+CHN8_RET2_BAK2	EQU	48H		;ADC CHN8 转换结果高4位备份
+
+CHN8_RET0_BAK3	EQU	49H		;ADC CHN8 转换结果低2位备份
+CHN8_RET1_BAK3	EQU	4AH		;ADC CHN8 转换结果中4位备份
+CHN8_RET2_BAK3	EQU	4BH		;ADC CHN8 转换结果高4位备份
+
+CHN8_FINAL_RET0	EQU	4CH		;通道8平均后的结果
+CHN8_FINAL_RET1	EQU	4DH		;
+CHN8_FINAL_RET2	EQU	4EH		;
+
+DET8_CT		EQU	4FH		;ADC 通道8 转换结果个数
 
 ;*****************************************************
 ;程序
@@ -517,6 +535,8 @@ ADC_ISP:
 	BAZ	CHN6_VOL_1		;此次为通道6 转换结果
 	SBI	ADCCHN,		07H
 	BAZ	CHN7_VOL_1		;此次为通道7 转换结果
+	SBI	ADCCHN,		08H
+	BAZ	CHN8_VOL_1		;此次为通道8 转换结果
 	JMP	ADC_ISP_END		;正常情况下不应执行此语句
 
 ;----------------------------------------------------------------	
@@ -765,6 +785,67 @@ CHN7_VOL_14:
 	JMP 	NEXT_CHN	
 ;----------------------------------------------------------------
 
+;转存通道8 转换结果
+;----------------------------------------------------------------
+CHN8_VOL_1:
+	LDI	TBR,		01H	;次数加一
+	ADDM	DET8_CT,	01H	
+
+	LDI	TBR,		04H	;DET8_CT - 4 -> A
+	SUB	DET8_CT,	01H
+	BAZ 	CHN8_VOL_14		;第4个转换结果
+
+	LDI	TBR,		03H	;DET8_CT - 3 -> A
+	SUB	DET8_CT,	01H
+	BAZ 	CHN8_VOL_13		;第3个转换结果
+
+	LDI	TBR,		02H	;DET8_CT - 2 -> A
+	SUB	DET8_CT,	01H
+	BAZ 	CHN8_VOL_12		;第2个转换结果
+
+CHN8_VOL_11:
+	LDA 	AD_RET0,	00H 	;保存第一次A/D 转换结果
+	STA 	CHN8_RET0_BAK0,	01H
+	LDA 	AD_RET1,	00H
+	STA 	CHN8_RET1_BAK0,	01H
+	LDA 	AD_RET2,	00H
+	STA 	CHN8_RET2_BAK0,	01H
+	JMP 	NEXT_CHN	
+
+CHN8_VOL_12:
+	LDA 	AD_RET0,	00H 	;保存第二次A/D 转换结果
+	STA 	CHN8_RET0_BAK1,	01H
+	LDA 	AD_RET1,	00H
+	STA 	CHN8_RET1_BAK1,	01H
+	LDA 	AD_RET2,	00H
+	STA 	CHN8_RET2_BAK1,	01H
+	JMP 	NEXT_CHN
+	
+CHN8_VOL_13:
+	LDA 	AD_RET0,	00H 	;保存第三次A/D 转换结果
+	STA 	CHN8_RET0_BAK2,	01H
+	LDA 	AD_RET1,	00H
+	STA 	CHN8_RET1_BAK2,	01H
+	LDA 	AD_RET2,	00H
+	STA 	CHN8_RET2_BAK2,	01H
+	JMP 	NEXT_CHN	
+	
+CHN8_VOL_14:
+	LDA 	AD_RET0,	00H 	;保存第四次A/D 转换结果
+	STA 	CHN8_RET0_BAK3,	01H
+	LDA 	AD_RET1,	00H
+	STA 	CHN8_RET1_BAK3,	01H
+	LDA 	AD_RET2,	00H
+	STA 	CHN8_RET2_BAK3,	01H
+
+	LDI	TBR,		00H	;DET8_CT 清0
+	STA	DET8_CT,	01H
+	
+	CALL	CAL_CHN8_ADCDATA
+	
+	JMP 	NEXT_CHN	
+;----------------------------------------------------------------
+
 ;----------------------------------------------------------------	
 NEXT_CHN:
 	LDA	ADCCHN
@@ -772,10 +853,11 @@ NEXT_CHN:
 	SBI	ADCCHN,		01H
 	BAZ	NEXT_CHN6
 	SBI	ADCCHN,		06H
-	BAZ	NEXT_CHN7
+	BAZ	NEXT_CHN0_7_8
 	SBI	ADCCHN,		07H
 	BAZ	NEXT_CHN0
-	
+	SBI	ADCCHN,		08H
+	BAZ	NEXT_CHN0
 	JMP 	ADC_ISP_END		;不可能执行这一句
 
 NEXT_CHN0:
@@ -790,11 +872,23 @@ NEXT_CHN6:
 	LDI 	ADCCHN,		06H 	;设定为CHN6
 	JMP	ADC_ISP_END
 
-NEXT_CHN7:
-	LDA	FLAG_TYPE
-	BA0	NEXT_CHN0		;若FLAG_TYPE的bit0=1，则表示已完成灯具类型选择，此时不再需要对AN7进行采样。
-	
+NEXT_CHN0_7_8:
+	ADI	FLAG_TYPE,	0001B
+	BA0	NEXT_CHN7		;若FLAG_TYPE的bit0=0，则表示还未完成灯具类型选择，此时仍需要对AN7进行采样。
+
+	LDI	TBR,		0101B
+	AND	LIGHT_TYPE
+	BNZ	NEXT_CHN8		;如果为常亮型，则跳转，设定下一通道为通道8
+
+	JMP	NEXT_CHN0		;如果FLAG_TYPE的bit0=1，并且灯具为常灭型，则下一通道转为通道0
+
+NEXT_CHN7:	
 	LDI	ADCCHN,		07H	;设定为CHN7
+	JMP	ADC_ISP_END
+
+NEXT_CHN8:
+	LDI	ADCCHN,		08H	;设定为CHN8
+	
 ;----------------------------------------------------------------
 
 
@@ -993,9 +1087,6 @@ REGISTER_INITIAL:
 
 	LDI	CMP_BAT_SHORT0,	0EH	;检测到电池电压小于此数值时(0.3V -> 0x1E)，视为电池充电回路短路
 	LDI	CMP_BAT_SHORT1,	01H
-
-	LDI	CMP_LIGHT0,	04H	;供光源检测使用,AD转换结果小于此数值时(0.2V -> 0x14)，表示光源产生故障
-	LDI	CMP_LIGHT1,	01H
 	
 	LDI	CMP_TYPE00,	0DH	;灯具类型门限0   (0.6V -> 0x3D)
 	LDI	CMP_TYPE01,	03H
@@ -1110,6 +1201,11 @@ PRE_START_TYPE_CHK_END:
 	
 PD0_AS_AN8:
 	ANDIM	PDCR,		1110B
+
+	ANDIM	ADCCFG,		0111B	;停止A/D 转换
+	LDI	ADCPORT,	1101B	;使用AN0 ~ AN8
+	LDI	ADCCHN,		00H	;选择AN0
+	ORIM 	ADCCFG,		1000B 	;启动A/D 转换	
 	
 PSTC_END:
 	RTNI
@@ -1566,43 +1662,75 @@ BAT_STATE_CHK_END:
 
 ;***********************************************************
 ;根据通道0转换结果，检测光源状态，并设置光源故障标志位
+;通道0检测到的电压小于0.2V时，判定为光源故障
 ;***********************************************************
 PROCESS_LIGHT:
 
 	ORIM	FLAG_OCCUPIED,	0001B	;锁定通道0最终结果
 
-	LDA	CHN0_FINAL_RET1,01H
-	SUB	CMP_LIGHT0
-	LDA	CHN0_FINAL_RET2,01H
-	SBC	CMP_LIGHT1
+	LDI	TBR,		04H	;和0.2V (0x14)比较
+	SUB	CHN0_FINAL_RET1,01H	;这里的01H表示CHN0_FINAL_RET1 位于 BANK1
+	LDI	TBR,		01H
+	SBC	CHN0_FINAL_RET2,01H
 
 	ANDIM	FLAG_OCCUPIED,	1110B	;释放对通道0最终结果的锁定
 
-	BC	ERROR_LIGHT		;光源故障
+	BNC	ERROR_LIGHT		;光源故障
 
 	ANDIM	ALARM_STATE,	1101B	;清除光源故障标志位
 	JMP     PROCESS_LIGHT_END
 
 ERROR_LIGHT:
 	ORIM	ALARM_STATE,	0010B	;置光源故障标志位
-	
-	;ADI	SELF_STATE,	1000B	;判断当前是否处于手动自检状态
-	;BA3	PROCESS_LIGHT_END
-
-	;LDI	TBR,		0110B
-	;AND	SELF_STATE
-	;BAZ	LIGHT_BEEP		;如果在非自检状态下检测到光源故障，则跳转
-
-	;ORIM	FIXED_SELF_CHK,	0001B	;在自检状态下检测到光源故障，则置不能退出自检状态标志位
-	
-;LIGHT_BEEP:
-	;ORIM	BEEP_CTL,	0001B	;如果发生光源故障，则蜂鸣器应每50秒蜂鸣2秒
 
 PROCESS_LIGHT_END:
 	RTNI
 
 ;***********************************************************
+;对于光源常亮型灯具，在主电状态下，
+;根据通道14转换结果，检测光源状态，并设置光源故障标志位
+;X<0.7V，短路
+;0.7<X<2.2V，正常
+;X>2.2V，开路
+;***********************************************************
+PROCESS_LIGHT_TYPE_ON:
+
+	ORIM	FLAG_OCCUPIED,	1000B	;锁定通道8最终结果，由于通道7与通道8不可能同时存在，故两者共用一个BIT来作标志位
+
+	LDI	TBR,		07H	;和0.7V (0x47)比较
+	SUB	CHN8_FINAL_RET1,01H
+	LDI	TBR,		04H
+	SBC	CHN8_FINAL_RET2,01H
+
+	BNC	PLTO_SHORT		;如果检测到的电压小于0.7V，则跳转
+
+	ANDIM	ALARM_STATE,	1101B	;如果检测到的电压大于0.7V，则清除光源故障标志位
+
+	LDI	TBR,		01H	;和2.2V (0xE1)比较
+	SUB	CHN8_FINAL_RET1,01H
+	LDI	TBR,		0EH
+	SBC	CHN8_FINAL_RET2,01H
+
+	BC	PLTO_OPEN		;如果检测到的电压大于2.2V，则跳转
+
+	ANDIM	ALARM_STATE,	1101B	;如果检测到的电压介于0.7V 与 2.2V 之间，则清除光源故障标志位
+	JMP	PROCESS_LIGHT_TYPE_ON_END
+
+PLTO_OPEN:
+PLTO_SHORT:
+	ORIM	ALARM_STATE,	0010B	;置光源故障标志位
+	
+PROCESS_LIGHT_TYPE_ON_END:
+	ANDIM	FLAG_OCCUPIED,	0111B	;释放对通道8最终结果的锁定
+	RTNI
+
+;***********************************************************
 ;光源状态检测，并置相应标志位
+;根据不同的光源类型(常亮型或亮灭型)，对应不同的光源故障检测方法。
+;1)对于常亮型光源，在主电时的检测阈值（14脚）：
+;0.7V以下是短路，0.7V~2.2V属于正常，2.2V以上则为开路；在自检时的检测阈值（6脚）：0.2V以下是短路，0.2V以上则属正常。
+;2)对于常灭型光源，检测阈值（6脚）：
+;0.2V以下是短路，0.2V以上则属正常。
 ;***********************************************************
 LIGHT_STATE_CHK:
 
@@ -1613,6 +1741,13 @@ LIGHT_STATE_CHK:
 	JMP	TYPE_OFF		;为常灭型灯具
 	
 TYPE_ON:
+	LDA	SELF_STATE
+	BNZ	TYPE_ON_EMERGENCY	;如果正在应急，则跳转
+
+	CALL	PROCESS_LIGHT_TYPE_ON	;处于主电状态，则通过14脚检测光源
+	JMP     LIGHT_STATE_CHK_END
+	
+TYPE_ON_EMERGENCY:
 	CALL	PROCESS_LIGHT		;检测光源，并设置相应标志位
 	JMP     LIGHT_STATE_CHK_END
 
@@ -3501,6 +3636,295 @@ CAL_CHN7_ADCDATA_END:
 
 	RTNI
 
+;*******************************************
+; 子程序: CAL_CHN8_ADCDATA
+; 描述: 防脉冲平均滤波法（N=4，去一个最大值和一个最小值，剩下两个求平均值）
+;*******************************************
+CAL_CHN8_ADCDATA:
+	ADI	FLAG_OCCUPIED,		1000B
+	BA3	CAL_CHN8_AD_MIN01
+	JMP	CAL_CHN8_ADCDATA_END		;正在使用转换结果
+
+;----------------------------
+;寻找最小值
+CAL_CHN8_AD_MIN01:	
+	LDA 	CHN8_RET1_BAK0,		01H
+	SUB 	CHN8_RET1_BAK1,		01H
+	LDA 	CHN8_RET2_BAK0,		01H
+	SBC 	CHN8_RET2_BAK1,		01H
+	BC 	CAL_CHN8_AD_MIN02 		;D0<D1	
+
+CAL_CHN8_AD_MIN12:
+	LDA 	CHN8_RET1_BAK1,		01H
+	SUB 	CHN8_RET1_BAK2,		01H
+	LDA 	CHN8_RET2_BAK1,		01H
+	SBC 	CHN8_RET2_BAK2,		01H
+	BC 	CAL_CHN8_AD_MIN13 		;D1<D2
+
+CAL_CHN8_AD_MIN23:
+	LDA 	CHN8_RET1_BAK2,		01H
+	SUB 	CHN8_RET1_BAK3,		01H
+	LDA 	CHN8_RET2_BAK2,		01H
+	SBC 	CHN8_RET2_BAK3,		01H
+	BC 	CAL_CHN8_AD_MIN2 		;D2<D3
+	;D3<D2
+	JMP 	CAL_CHN8_AD_MIN3
+
+CAL_CHN8_AD_MIN13:
+	LDA 	CHN8_RET1_BAK1,		01H
+	SUB 	CHN8_RET1_BAK3,		01H
+	LDA 	CHN8_RET2_BAK1,		01H
+	SBC 	CHN8_RET2_BAK3,		01H
+	BC 	CAL_CHN8_AD_MIN1 		;D1<D3
+	;D3<D1
+	JMP 	CAL_CHN8_AD_MIN3
+
+;D0<D1
+CAL_CHN8_AD_MIN02:
+	LDA 	CHN8_RET1_BAK0,		01H
+	SUB 	CHN8_RET1_BAK2,		01H
+	LDA 	CHN8_RET2_BAK0,		01H
+	SBC 	CHN8_RET2_BAK2,		01H
+	BC 	CAL_CHN8_AD_MIN03 		;D0<D2
+	;D3<D1
+	JMP 	CAL_CHN8_AD_MIN23
+
+;D0<D2
+CAL_CHN8_AD_MIN03:
+	LDA 	CHN8_RET1_BAK0,		01H
+	SUB 	CHN8_RET1_BAK3,		01H
+	LDA 	CHN8_RET2_BAK0,		01H
+	SBC 	CHN8_RET2_BAK3,		01H
+	BC 	CAL_CHN8_AD_MIN0 		;D0<D3
+	;D3<D0
+	JMP 	CAL_CHN8_AD_MIN3
+
+;-----------------------
+;将最小值清零
+CAL_CHN8_AD_MIN0:
+	LDI 	TBR,			00H
+	STA 	CHN8_RET0_BAK0,		01H
+	STA 	CHN8_RET1_BAK0,		01H
+	STA 	CHN8_RET2_BAK0,		01H
+	JMP 	CAL_CHN8_AD_MAX01
+
+CAL_CHN8_AD_MIN1:
+	LDI 	TBR,			00H
+	STA 	CHN8_RET0_BAK1,		01H
+	STA 	CHN8_RET1_BAK1,		01H
+	STA 	CHN8_RET2_BAK1,		01H
+	JMP 	CAL_CHN8_AD_MAX01
+
+CAL_CHN8_AD_MIN2:
+	LDI 	TBR,			00H
+	STA 	CHN8_RET0_BAK2,		01H
+	STA 	CHN8_RET1_BAK2,		01H
+	STA 	CHN8_RET2_BAK2,		01H
+	JMP 	CAL_CHN8_AD_MAX01
+
+CAL_CHN8_AD_MIN3:
+	LDI 	TBR,			00H
+	STA 	CHN8_RET0_BAK3,		01H
+	STA 	CHN8_RET1_BAK3,		01H
+	STA 	CHN8_RET2_BAK3,		01H
+	JMP 	CAL_CHN8_AD_MAX01
+
+;----------------------------
+;寻找最大值
+CAL_CHN8_AD_MAX01:
+	LDA 	CHN8_RET1_BAK0,		01H
+	SUB 	CHN8_RET1_BAK1,		01H
+	LDA 	CHN8_RET2_BAK0,		01H
+	SBC 	CHN8_RET2_BAK1,		01H
+	BC 	CAL_CHN8_AD_MAX12 		;D1>D0
+
+;D0>D1
+CAL_CHN8_AD_MAX02:
+	LDA 	CHN8_RET1_BAK0,		01H
+	SUB 	CHN8_RET1_BAK2,		01H
+	LDA 	CHN8_RET2_BAK0,		01H
+	SBC 	CHN8_RET2_BAK2,		01H
+	BC 	CAL_CHN8_AD_MAX23 		;D2>D0
+
+;D0>D2
+CAL_CHN8_AD_MAX03:
+	LDA 	CHN8_RET1_BAK0,		01H
+	SUB 	CHN8_RET1_BAK3,		01H
+	LDA 	CHN8_RET2_BAK0,		01H
+	SBC 	CHN8_RET2_BAK3,		01H
+	BC 	CAL_CHN8_AD_MAX3 		;D3>D0
+	;D0>D3
+	JMP 	CAL_CHN8_AD_MAX0
+
+;D2>D0
+CAL_CHN8_AD_MAX23:
+	LDA 	CHN8_RET1_BAK2,		01H
+	SUB 	CHN8_RET1_BAK3,		01H
+	LDA 	CHN8_RET2_BAK2,		01H
+	SBC 	CHN8_RET2_BAK3,		01H
+	BC 	CAL_CHN8_AD_MAX3 		;D3>D2
+	;D2>D3
+	JMP 	CAL_CHN8_AD_MAX2
+
+;D1>D0
+CAL_CHN8_AD_MAX12:
+	LDA 	CHN8_RET1_BAK1,		01H
+	SUB 	CHN8_RET1_BAK2,		01H
+	LDA 	CHN8_RET2_BAK1,		01H
+	SBC 	CHN8_RET2_BAK2,		01H
+	BC 	CAL_CHN8_AD_MAX23 		;D2>D1
+
+;D1>D2
+CAL_CHN8_AD_MAX13:
+	LDA 	CHN8_RET1_BAK1,		01H
+	SUB 	CHN8_RET1_BAK3,		01H
+	LDA 	CHN8_RET2_BAK1,		01H
+	SBC 	CHN8_RET2_BAK3,		01H
+	BC 	CAL_CHN8_AD_MAX3 		;D3>D1
+	;D1>D3
+	JMP 	CAL_CHN8_AD_MAX1
+
+;-----------------------
+;将最大值清零
+CAL_CHN8_AD_MAX0:
+	LDI 	TBR,			00H
+	STA 	CHN8_RET0_BAK0,		01H
+	STA 	CHN8_RET1_BAK0,		01H
+	STA 	CHN8_RET2_BAK0,		01H
+	JMP 	CAL_CHN8_AD_ADD
+
+CAL_CHN8_AD_MAX1:
+	LDI 	TBR,			00H
+	STA 	CHN8_RET0_BAK1,		01H
+	STA 	CHN8_RET1_BAK1,		01H
+	STA 	CHN8_RET2_BAK1,		01H
+	JMP 	CAL_CHN8_AD_ADD
+
+CAL_CHN8_AD_MAX2:
+	LDI 	TBR,			00H
+	STA 	CHN8_RET0_BAK2,		01H
+	STA 	CHN8_RET1_BAK2,		01H
+	STA 	CHN8_RET2_BAK2,		01H
+	JMP 	CAL_CHN8_AD_ADD
+
+CAL_CHN8_AD_MAX3:
+	LDI 	TBR,			00H
+	STA 	CHN8_RET0_BAK3,		01H
+	STA 	CHN8_RET1_BAK3,		01H
+	STA 	CHN8_RET2_BAK3,		01H
+	JMP 	CAL_CHN8_AD_ADD
+
+;----------------------------
+;计算总和并存放在CHN8_RET0_BAK3,CHN8_RET1_BAK3 和CHN8_RET2_BAK3（包括两个被清零的）
+CAL_CHN8_AD_ADD:
+	LDI 	TEMP_SUM_CY,		00H
+
+	;D0 + D1
+	;LDA 	CHN8_RET0_BAK0,		01H
+	;ADDM 	CHN8_RET0_BAK1,		01H
+	LDA 	CHN8_RET1_BAK0,		01H
+	ADDM 	CHN8_RET1_BAK1,		01H
+	LDA 	CHN8_RET2_BAK0,		01H
+	ADCM 	CHN8_RET2_BAK1,		01H
+	LDI 	TBR,			00H
+	ADCM 	TEMP_SUM_CY
+
+	;+ D2
+	;LDA 	CHN8_RET0_BAK1,		01H
+	;ADDM 	CHN8_RET0_BAK2,		01H
+	LDA 	CHN8_RET1_BAK1,		01H
+	ADDM 	CHN8_RET1_BAK2,		01H
+	LDA 	CHN8_RET2_BAK1,		01H
+	ADCM 	CHN8_RET2_BAK2,		01H
+	LDI 	TBR,			00H
+	ADCM 	TEMP_SUM_CY
+
+	;+ D3
+	;LDA 	CHN8_RET0_BAK2,		01H
+	;ADDM 	CHN8_RET0_BAK3,		01H
+	LDA 	CHN8_RET1_BAK2,		01H
+	ADDM 	CHN8_RET1_BAK3,		01H
+	LDA 	CHN8_RET2_BAK2,		01H
+	ADCM 	CHN8_RET2_BAK3,		01H
+	LDI 	TBR,			00H
+	ADCM 	TEMP_SUM_CY
+
+;----------------------------
+;总和除以2，得到平均值，存放在CHN8_FINAL_RET0(),CHN8_FINAL_RET1 和CHN8_FINAL_RET2
+CAL_CHN8_AD_DIV:
+	;LDA 	CHN8_RET0_BAK3,		01H
+	;SHR
+	;STA 	CHN8_RET0_BAK3,		01H
+	
+	LDA 	CHN8_RET1_BAK3,		01H
+	SHR
+	STA 	CHN8_RET1_BAK3,		01H
+	
+	;BNC 	$+3
+	;LDI 	TBR,			0010B
+	;ORM 	CHN8_RET0_BAK3
+
+	LDA 	CHN8_RET2_BAK3,		01H
+	SHR
+	STA 	CHN8_RET2_BAK3,		01H
+	
+	BNC 	$+3
+	LDI 	TBR,			1000B
+	ORM 	CHN8_RET1_BAK3,		01H
+
+	LDA 	TEMP_SUM_CY
+	SHR
+	BNC 	$+3
+	LDI 	TBR,			1000B
+	ORM 	CHN8_RET2_BAK3,		01H
+
+
+	;LDA	CHN8_RET0_BAK3,		01H
+	;STA	CHN8_FINAL_RET0,		01H
+	LDA	CHN8_RET1_BAK3,		01H
+	STA	CHN8_FINAL_RET1,	01H
+	LDA	CHN8_RET2_BAK3,		01H
+	STA	CHN8_FINAL_RET2,	01H
+
+;----------------------------
+;调整为CHN8_FINAL_RET0存放低4位，CHN8_FINAL_RET1存放中4位，CHN8_FINAL_RET2存放高2位
+	;LDA 	CHN8_FINAL_RET1,		01H
+	;SHR
+	;STA 	CHN8_FINAL_RET1,		01H
+
+	;BNC 	$+3
+	;LDI 	TBR,			0100B
+	;ORM 	CHN8_FINAL_RET0,		01H
+
+	;LDA 	CHN8_FINAL_RET1,		01H
+	;SHR
+	;STA 	CHN8_FINAL_RET1,		01H	
+
+	;BNC 	$+3
+	;LDI 	TBR,			1000B
+	;ORM 	CHN8_FINAL_RET0,		01H
+
+
+	;LDA 	CHN8_FINAL_RET2,		01H
+	;SHR
+	;STA 	CHN8_FINAL_RET2,		01H	
+
+	;BNC 	$+3
+	;LDI 	TBR,			0100B
+	;ORM 	CHN8_FINAL_RET1,		01H
+
+	;LDA 	CHN8_FINAL_RET2,		01H
+	;SHR
+	;STA 	CHN8_FINAL_RET2,		01H	
+
+	;BNC 	$+3
+	;LDI 	TBR,			1000B
+	;ORM 	CHN8_FINAL_RET1,		01H
+	
+;----------------------------
+CAL_CHN8_ADCDATA_END:	
+
+	RTNI
 	
 	END
 
