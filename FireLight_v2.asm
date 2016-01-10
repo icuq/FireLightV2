@@ -96,8 +96,6 @@ PPECR 		EQU 	38CH		;PORTE 口上拉电阻控制寄存器
 ;------------------------------------------------------------------
 AC_BAK 		EQU 	30H 		;AC 值备份寄存器
 
-SYSTEM_STATE	EQU	31H		;bit 0:  0 - 主电状态(主电源正常),  1 - 应急状态(主电源停电)
-
 SELF_STATE	EQU	32H		;bit 0:  0 - 主电状态(主电源正常),  1 - 模拟应急状态(模拟主电源停电)
 					;bit 1:  0 - 非月检状态,	         1 - 月检状态
 					;bit 2:  0 - 非年检状态,	         1 - 年检状态
@@ -1049,8 +1047,6 @@ REGISTER_INITIAL:
 	;LDI	CNT0_496MS,	03H	;初始化496ms 计数器
 	LDI	BTN_PRE_STA,	01H	;初始化上一次没有按键
 
-	;状态相关
-	LDI	SYSTEM_STATE,	00H	;初始化为"主电"
 
 	;门限值
 	LDI	CMP_MIN_PWR0,	0EH	;最小上电电压(1.396V -> 0x8E)
@@ -1752,8 +1748,8 @@ TYPE_ON_EMERGENCY:
 	JMP     LIGHT_STATE_CHK_END
 
 TYPE_OFF:
-	ADI	SYSTEM_STATE,	01H	;检查主电源供电是否正常
-	BA0	LIGHT_STATE_CHK_END	;处于主电源正常供电状态，无需对光源进行检测
+	ADI	SELF_STATE,	01H	;检查是否处于主电状态
+	BA0	LIGHT_STATE_CHK_END	;处于主电状态，无需对光源进行检测
 	CALL	PROCESS_LIGHT		;检测光源，并设置相应标志位
 
 LIGHT_STATE_CHK_END:
@@ -1802,30 +1798,32 @@ GREEN:
 
 GREEN_ON:	
 	ORIM	PORTC,		0010B	;如果当前系统主电源正常，则绿灯亮
-	JMP	ALARM_BAT
+	JMP	YELLOW
 
 GREEN_OFF:
 	ANDIM	PORTC,		1101B	;熄灭绿灯
-	JMP	ALARM_BAT
+	JMP	YELLOW
 
 GREEN_1HZ:	
 	ADI	F_168MS,	01H	;判断是否到了一个新168MS
-	BA0 	BEEP_PROCESS		;还没有到168MS，直接跳至结束;;;;
+	BA0 	BEEP_PROCESS		;还没有到168MS，直接跳至处理蜂鸣器
 	
 	ADIM	CNT_LED_GREEN,	01H
 	SBI	CNT_LED_GREEN,	03H
 
-	BNC	ALARM_BAT
+	BNC	YELLOW
 	LDI	CNT_LED_GREEN,	00H
 	EORIM	PORTC,		0010B
-	JMP	ALARM_BAT
+	JMP	YELLOW
 
 GREEN_3HZ:	
 	ADI	F_168MS,	01H	;判断是否到了一个新168MS
-	BA0 	BEEP_PROCESS		;;;
+	BA0 	BEEP_PROCESS		
 	EORIM	PORTC,		0010B
 	
 ;--------------------------------------------------------------------------
+;黄灯的处理
+YELLOW:
 ;电池充电回路故障处理
 ALARM_BAT:	
 	LDI	TBR,		0001B	;将0001B载入累加器A中
