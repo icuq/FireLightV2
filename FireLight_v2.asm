@@ -495,7 +495,7 @@ TIMER1_ISP:
 	STA 	AC_BAK,		00H 	;备份AC 值
 	ANDIM 	IRQ,		1101B 	;清TIMER1 中断请求标志
 
-	EORIM	PORTC,		1000B	;翻转PC.3，产生蜂鸣
+	EORIM	PORTE,		0010B	;翻转PE.1，产生蜂鸣
 	
 TIMER1_ISP_END:
 	LDI 	IE,		1110B 	;打开ADC,Timer0,Timer1 中断
@@ -926,13 +926,13 @@ REGISTER_INITIAL:
 	LDI 	PBCR,		00H 	;设置PortB 作为输入口
 
 	LDI	PORTC,		00H
-	LDI	PCCR,		0FH	;设置PortC.0/PortC.1/PortC.2/PortC.3 作为输出
-	
-	LDI 	PDCR,		1110B 	;设置PD.0为输入，PD.3为输出
-	LDI	TBR,		0001B	;打开PD.0 内部上拉电阻
-	STA	PPDCR
+	LDI	PCCR,		0111B	;设置PortC.0/PortC.1/PortC.2作为输出，PortC.3作为输入 
+	LDI	TBR,		1000B	;打开PC.3 内部上拉电阻
+	STA	PPCCR
 
-	LDI 	PORTE,		0010B	;PE.1继电器输出高电平
+	LDI 	PDCR,		1110B 	;设置PD.0为输入，PD.3为输出
+
+	LDI 	PORTE,		00H	;
 	LDI 	PECR,		0FH 	;设置PortE 作为输出口
 
 	;ADC初始化
@@ -1100,7 +1100,18 @@ NI_ON:
 PRE_START_TYPE_CHK_END:
 	ANDIM	FLAG_OCCUPIED,	0111B	;释放对通道7最终结果的锁定
 	ORIM	FLAG_TYPE,	0001B	;不再对通道7进行采样
+
+	LDI	TBR,		0101B
+	AND	LIGHT_TYPE
+	BNZ	PD0_AS_AN8		;如果为常亮型，则PD.0配置为输入，作AD采样用
+
+	ORIM	PDCR,		0001B	;如果为常灭型，则PD.0配置为输出，驱动继电器
+	JMP	PSTC_END
 	
+PD0_AS_AN8:
+	ANDIM	PDCR,		1110B
+	
+PSTC_END:
 	RTNI
 
 
@@ -1242,13 +1253,18 @@ EMERGENCY_ENABLE:
 	LDI	PWMD01,		0EH	;占空比为50%
 	LDI	PWMD02,		03H
 
-	ANDIM	PORTE,		1101B	;PE.1输出低电平
+	LDI	TBR,		0101B
+	AND	LIGHT_TYPE
+	BNZ	ENABLE_PWM0		;如果为常亮型，则跳转
+	
+	ANDIM	PORTD,		1110B	;PD.0输出低电平
 
 	CALL	DELAY_5MS		;延时20ms
 	CALL	DELAY_5MS
 	CALL	DELAY_5MS
 	CALL	DELAY_5MS
 
+ENABLE_PWM0:
 	ORIM	PWMC0,		0001B	;使能PWM0输出	
 
 EMERGENCY_ENABLE_END:
@@ -1261,12 +1277,16 @@ EMERGENCY_ENABLE_END:
 EMERGENCY_DISABLE:
 	ANDIM	PWMC0,		1110B	;关闭PWM0输出
 
+	LDI	TBR,		0101B
+	AND	LIGHT_TYPE
+	BNZ	EMERGENCY_DISABLE_END	;如果为常亮型，则跳转
+
 	CALL	DELAY_5MS		;延时20ms
 	CALL	DELAY_5MS
 	CALL	DELAY_5MS
 	CALL	DELAY_5MS
 
-	ORIM	PORTE,		0010B	;PE.1输出高电平
+	ORIM	PORTD,		0001B	;PD.0输出高电平
 
 EMERGENCY_DISABLE_END:
 	RTNI
@@ -1789,7 +1809,7 @@ TIPS_PROCESS_END:
 ;按键扫描
 ;输入: 
 ;-- F_168MS.1		168ms标志
-;-- PORTD.0		按键状态，1为未按下，0表示按键被按下
+;-- PORTC.3		按键状态，1为未按下，0表示按键被按下
 ;输出: 		
 ;-- BTN_PRE_STA		上一次按键扫描时的按键状态
 ;-- PRESS_DURATION		本次按键按下的时长，位图形式表示
@@ -1799,7 +1819,7 @@ TIPS_PROCESS_END:
 ;***********************************************************
 KEY_PROCESS:
 
-	LDI 	PDCR,		1110B 	;设置PD.0 为输入，PD.3 为输出
+	;LDI 	PDCR,		1110B 	;设置PD.0 为输入，PD.3 为输出
 	
 KEY_CHECK:
 	ADI	F_168MS,	0010B	;检查168MS标志位
@@ -1808,8 +1828,11 @@ KEY_CHECK:
 	ANDIM	F_168MS,	1101B	;清168MS标志位
 	;CALL 	DELAY_5MS 		;消除按键抖动
 	
-	LDA 	PORTD,		00H 	;读取PD 口状态
-	STA 	TEMP,		00H 	;把PD 口状态存到TEMP 寄存器中
+	LDA 	PORTC,		00H 	;读取PC.3 口状态
+	SHR
+	SHR
+	SHR
+	STA 	TEMP,		00H 	;把PC.3 口状态存到TEMP 寄存器中
 	CALL 	DELAY_5MS 		;消除按键抖动
 	
 	;LDA 	PORTD,		00H 	;读取PD 口状态
@@ -1817,8 +1840,11 @@ KEY_CHECK:
 	;BA0 	KEY_ERROR
 	;CALL 	DELAY_5MS 		;消除按键抖动
 	
-	LDA 	PORTD,		00H 	;读取PD 口状态
-	SUB 	TEMP,		00H 	;比较读取PD.0 口状态值，不相等则错误
+	LDA 	PORTC,		00H 	;读取PC.3 口状态
+	SHR
+	SHR
+	SHR
+	SUB 	TEMP,		00H 	;比较读取PC.3 口状态值，不相等则错误
 	BA0 	KEY_ERROR
 	
 	LDA 	TEMP		 	;将TEMP 中的数据储存至累加器A 中
@@ -2023,13 +2049,18 @@ SELF_CHK_STATE_END:
 ;***********************************************************
 EN_PWM0_DLY_20MS:
 
-	ANDIM	PORTE,		1101B	;PE.1输出低电平
+	LDI	TBR,		0101B
+	AND	LIGHT_TYPE
+	BNZ	EE_PWM0			;如果为常亮型，则跳转
+
+	ANDIM	PORTD,		1110B	;PD.0输出低电平
 
 	CALL	DELAY_5MS		;延时20ms
 	CALL	DELAY_5MS
 	CALL	DELAY_5MS
 	CALL	DELAY_5MS
 
+EE_PWM0:
 	ORIM	PWMC0,		0001B	;使能PWM0输出
 
 EN_PWM0_DLY_20MS_END:
@@ -2046,12 +2077,16 @@ DIS_PWM0_DLY_20MS:
 
 	ANDIM	PWMC0,		1110B	;关闭PWM0输出
 
+	LDI	TBR,		0101B
+	AND	LIGHT_TYPE
+	BNZ	DIS_PWM0_DLY_20MS_END	;如果为常亮型，则跳转
+
 	CALL	DELAY_5MS		;延时20ms
 	CALL	DELAY_5MS
 	CALL	DELAY_5MS
 	CALL	DELAY_5MS
 
-	ORIM	PORTE,		0010B	;PE.1输出高电平
+	ORIM	PORTD,		0001B	;PD.0输出高电平
 
 DIS_PWM0_DLY_20MS_END:
 	RTNI
