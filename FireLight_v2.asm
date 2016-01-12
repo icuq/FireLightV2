@@ -452,8 +452,8 @@ J_MINUTE:
 	LDI	CNT1_1MINUTE,	03H
 
 	ORIM	F_TIME,		1000B	;设置 "1分钟 到"标志	
-
-J_HOUR:
+;--------------------------非加速时打开以下语句------------------------------------
+J_HOUR:					;以秒为单位累加
 	SBIM	SEC_CNT0,	01H	;SEC_CNT0 每秒减1
 	LDI	TBR,		00H
 	SBCM	SEC_CNT1		;每次SEC_CNT0-1产生借位时，将SEC_CNT1减1
@@ -465,27 +465,73 @@ J_HOUR:
 	LDI 	SEC_CNT1,	00H
 	LDI 	SEC_CNT2,	0EH
 	
-J_MONTH:	
+J_MONTH:				;以小时为单位累加
 	SBIM 	HOUR_CNT0,	01H	;HOUR_CNT0 每小时减1
 	LDI	TBR,		00H
 	SBCM	HOUR_CNT1		;每次 HOUR_CNT0 产生借位时，将 HOUR_CNT1 减1
+	LDI	TBR,		00H
+	SBCM	HOUR_CNT2
 	BC	TIMER0_ISP_END		;HOUR_CNT1 减1产生借位时，则表示1月计时已到
 	
 	LDI 	HOUR_CNT0,	07H 	;重置HOUR_CNT0/1/2 为2E8H-1(744-1)
 	LDI 	HOUR_CNT1,	0EH
 	LDI	HOUR_CNT2,	02H
-	
+
+	LDA	SELF_STATE
+	BA2	J_YEAR			;如果当前正在进行年检，则不进行月检
 	ORIM 	F_TIME,		0010B 	;设置 "1月到" 标志
 	
-J_YEAR:	
+J_YEAR:					;以月为单位累加
 	SBIM 	MONTH_CNT,	01H	;MONTH_CNT 每月减1
 	BC 	TIMER0_ISP_END		;MONTH_CNT 减1产生借位时，则表示1年计时已到
 	
 	LDI 	MONTH_CNT,	0BH 	;重置MONTH_CNT 为0CH-1(12-1)
-	
+	ANDIM	F_TIME,		1001B	
 	ORIM 	F_TIME,		0100B 	;设置 "1年到" 标志
+;--------------------------------------------------------------------------------
 
 TIMER0_ISP_END:
+
+;--------------------------加速时打开以下语句------------------------------------
+;J_HOUR:					;8MS累加1次
+;	SBIM	SEC_CNT0,	01H	;
+;	LDI	TBR,		00H
+;	SBCM	SEC_CNT1		;
+;	LDI	TBR,		00H
+;	SBCM	SEC_CNT2		;
+;	BC	SIMULATION_END		;
+	
+;	LDI 	SEC_CNT0,	0BH 	;8MS累加60次，即到模拟中的1小时
+;	LDI 	SEC_CNT1,	03H
+;	LDI 	SEC_CNT2,	00H
+
+;J_MONTH:				
+;	SBIM 	HOUR_CNT0,	01H	;
+;	LDI	TBR,		00H
+;	SBCM	HOUR_CNT1		;
+;	LDI	TBR,		00H
+;	SBCM	HOUR_CNT2
+;	BC	SIMULATION_END		;
+	
+;	LDI 	HOUR_CNT0,	00H 	;1小时累加625次，即到模拟中的1月
+;	LDI 	HOUR_CNT1,	07H
+;	LDI	HOUR_CNT2,	02H
+
+;	LDA	SELF_STATE
+;	BA2	J_YEAR			;如果当前正在进行年检，则不进行月检
+;	ORIM 	F_TIME,		0010B 	;设置 "1月到" 标志
+	
+;J_YEAR:					;以月为单位累加
+;	SBIM 	MONTH_CNT,	01H	;MONTH_CNT 每月减1
+;	BC 	SIMULATION_END		;MONTH_CNT 减1产生借位时，则表示1年计时已到
+	
+;	LDI 	MONTH_CNT,	0BH 	;重置MONTH_CNT 为0CH-1(12-1)
+
+;	ANDIM	F_TIME,		1001B
+;	ORIM 	F_TIME,		0100B 	;设置 "1年到" 标志	
+
+;SIMULATION_END:	
+;-----------------------------------------------------------------------------------------
 	LDI 	IE,		1110B 	;打开ADC,Timer0,Timer1 中断
 	LDA 	AC_BAK,		00H 	;恢复AC 值
 	RTNI
@@ -969,7 +1015,7 @@ REGISTER_INITIAL:
 	LDI	CNT0_168MS,	04H	;定时168ms
 	LDI	CNT1_168MS,	01H	;
 
-	LDI 	CNT0_8MS,	0DH 	;定时1s
+	LDI 	CNT0_8MS,	0CH 	;定时1s
 	LDI 	CNT1_8MS,	07H 	;定时1s
 
 	LDI	CNT0_50S,	01H	;Beep定时50s
@@ -978,10 +1024,18 @@ REGISTER_INITIAL:
 	LDI	SEC_CNT0,	0FH	;SEC_CNT0/1/2 初始化为E10H - 1，即3600 -1
 	LDI	SEC_CNT1,	00H
 	LDI	SEC_CNT2,	0EH
+;加速时屏蔽以上三行，打开以下三行
+	;LDI	SEC_CNT0,	0BH	;SEC_CNT0/1/2 初始化为E10H - 1，即3600 -1
+	;LDI	SEC_CNT1,	03H
+	;LDI	SEC_CNT2,	00H
 
 	LDI	HOUR_CNT0,	07H	;HOUR_CNT0/1/2 初始化为2E8H - 1，即744 - 1
 	LDI	HOUR_CNT1,	0EH
 	LDI	HOUR_CNT2,	02H
+;加速时屏蔽以上三行，打开以下三行
+	;LDI	HOUR_CNT0,	00H	;HOUR_CNT0/1/2 初始化为2E8H - 1，即744 - 1
+	;LDI	HOUR_CNT1,	07H
+	;LDI	HOUR_CNT2,	02H
 
 	LDI	MONTH_CNT,	0BH	;MONTH_CNT 初始化为12 -1 个月
 
@@ -2168,6 +2222,7 @@ SCS_LESS_7S:
 
 SET_MONTH_BIT:
 	ANDIM	F_TIME,		1101B	;清1月到标志位
+	ORIM	GREEN_FLASH,	0010B	;让绿灯以1HZ的频率闪烁		
 	LDI	SELF_STATE,	0010B	;置自动月检标志位
 	JMP	SELF_CHK_STATE_END
 
@@ -2175,6 +2230,7 @@ SET_MONTH_BIT:
 
 SET_YEAR_BIT:
 	ANDIM	F_TIME,		1011B	;清1年到标志位
+	ORIM	GREEN_FLASH,	0100B	;让绿灯以3HZ的频率闪烁	
 	LDI	SELF_STATE,	0100B	;置自动年检标志位
 	JMP	SELF_CHK_STATE_END
 
@@ -2255,10 +2311,10 @@ SELF_CHK_PROCESS:
 	BAZ	SCP_EMERGENCY		;如果模拟停电标志位为1，则跳转
 
 	LDA	SELF_STATE
-	BA1	SCP_MONTH		;如果手动月检标志为1，则跳转
+	BA2	SCP_YEAR		;如果手动年检标志为1，则跳转
 
 	LDA	SELF_STATE
-	BA2	SCP_YEAR		;如果手动年检标志为1，则跳转
+	BA1	SCP_MONTH		;如果手动月检标志为1，则跳转
 
 SCP_CLEAR_ALL:
 	JMP	SCP_DIS_EMERGENCY	;如果自检标志均为0，则关闭应急
