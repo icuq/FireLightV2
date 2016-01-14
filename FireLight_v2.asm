@@ -176,6 +176,8 @@ BAT_STATE	EQU	59H		;bit0 = 0, 表示充电回路未开路；bit0 = 1, 表示充电回路开路
 
 BAT_EXHAUSTED	EQU	5AH		;bit0 = 1, 表示电池电量已耗尽，此时应关闭应急
 
+BAT_SHORT	EQU	5BH		;bit0 = 1, 表示电池短路
+
 LIGHT_STATE	EQU	5CH		;bit0 = 1, 表示光源故障
 
 
@@ -1025,7 +1027,7 @@ REGISTER_INITIAL:
 	LDI	SEC_CNT1,	00H
 	LDI	SEC_CNT2,	0EH
 ;加速时屏蔽以上三行，打开以下三行
-	;LDI	SEC_CNT0,	0BH	;SEC_CNT0/1/2 初始化为E10H - 1，即3600 -1
+	;LDI	SEC_CNT0,	0BH		;SEC_CNT0/1/2 初始化为03CH - 1，即60 -1
 	;LDI	SEC_CNT1,	03H
 	;LDI	SEC_CNT2,	00H
 
@@ -1033,7 +1035,7 @@ REGISTER_INITIAL:
 	LDI	HOUR_CNT1,	0EH
 	LDI	HOUR_CNT2,	02H
 ;加速时屏蔽以上三行，打开以下三行
-	;LDI	HOUR_CNT0,	00H	;HOUR_CNT0/1/2 初始化为2E8H - 1，即744 - 1
+	;LDI	HOUR_CNT0,	00H	;HOUR_CNT0/1/2 初始化为271H - 1，即625 - 1
 	;LDI	HOUR_CNT1,	07H
 	;LDI	HOUR_CNT2,	02H
 
@@ -1299,14 +1301,53 @@ CHARGE_BAT_DISABLE_END:
 	ANDIM	ALREADY_ENTER,	1110B	;清已经开始充电标志位
 	RTNI
 
+;***********************************************************
+; 停电或是电池开路的情况下，不论是锂电池还是镍氢电池，
+; 通过PWM1输出低电平，停止对电池充电
+;***********************************************************
+PWR_OFF_BAT_OPEN:
+	ANDIM	PWMC1,		1110B	;禁能PWM1输出，关闭充电功能
+PWR_OFF_BAT_OPEN_END:
+	RTNI
+
+;***********************************************************
+; 电池短路的情况下，不论是锂电池还是镍氢电池，
+; 都通过PWM1进行涓流充电
+;***********************************************************
+LI_NI_BAT_SHORT:
+	LDI	PWMC1,		0110B	;PWM1 Clock = 8 * tosc = 2us
+	LDI	PWMP10,		0AH	;周期为250个PWM0 Clock
+	LDI	PWMP11,		0FH	
+	LDI	PWMD10,		00H	;无微调
+	LDI	PWMD11,		0EH	;占空比为1/4
+	LDI	PWMD12,		03H
+	ORIM	PWMC1,		0001B	;使能PWM1输出
+LI_NI_BAT_SHORT_END:
+	RTNI	
 
 ;***********************************************************
 ;电池充电控制
 ;***********************************************************
 CHARGE_BAT_CTRL:
+	SBI	SELF_STATE,	0001B
+	BNZ	SBC_1			;如果没有停电，则跳转
 
-	LDA	SELF_STATE
-	BAZ	CHARGE_TAG		;如果处于主电状态，则跳转
+POBO:	
+	CALL	PWR_OFF_BAT_OPEN
+	JMP	CHARGE_BAT_CTRL_END	
+
+	LDA	BAT_STATE
+	BA0	POBO			;电池开路了，处理方法同停电一样
+
+	ADI	BAT_SHORT,	0001B
+	BA0	SBC_1			;如果电池没有短路，则跳转
+
+	CALL	LI_NI_BAT_SHORT
+	JMP	CHARGE_BAT_CTRL_END	
+	
+SBC_1:	
+	LDA	PWMC0
+	BAZ	CHARGE_TAG		;如果当前没有在应急，则跳转
 
 	ANDIM	PWMC1,		1110B	;禁能PWM1输出，关闭充电功能
 	JMP	CHARGE_BAT_CTRL_END
@@ -1364,8 +1405,10 @@ CHARGE_BAT_CTRL_END:
 ;应急时长清零
 ;***********************************************************
 EMERGENCY_ENABLE:
-	ORIM	SELF_STATE,	0001B	;置停电标志位
+	LDI	SELF_STATE,	0001B	;置停电标志位
 	ORIM	ALREADY_ENTER,	0010B	;置标志位，表明已打开应急放电功能
+	LDI	GREEN_FLASH,	00H
+	ANDIM	ALREADY_ENTER,	0011B
 	
 	LDI	CNT0_EMERGENCY,	00H	;应急时长清零
 	LDI	CNT1_EMERGENCY,	00H
@@ -1643,10 +1686,13 @@ BAT_STATE_CHK:
 
 	BC	BAT_OPEN		;AD转换结果大于1.56V，电池开路
 	ANDIM	BAT_STATE,	1110B	;清除充电回路开路标志位
+
+	LDA	SELF_STATE
+	BNZ	BSC_1
 	ANDIM	ALARM_STATE,	1110B	;清除充电回路开路故障标志位
 	
 ;---------------------------------------------------------------------------
-
+BSC_1:
 	LDI	TBR,		03H	;将电池电压和1.44V (0x93)比较，如果大于1.44V，则视为电池已充满
 	SUB	CHN1_FINAL_RET1,01H
 	LDI	TBR,		09H
@@ -1684,8 +1730,11 @@ BAT_STATE_CHK:
 	LDI	TBR,		01H
 	SBC	CHN1_FINAL_RET2,01H
 
-	BNC	BAT_SHORT		;AD转换结果小于0.3V，电池充电回路短路
+	BNC	BSC_BAT_SHORT		;AD转换结果小于0.3V，电池充电回路短路
 
+	ANDIM	BAT_SHORT,	1110B	;清电池短路标志位
+	LDA	SELF_STATE
+	BNZ	BAT_STATE_CHK_END
 	ANDIM	ALARM_STATE,	1110B	;清电池故障标志位
 	JMP	BAT_STATE_CHK_END
 	
@@ -1705,8 +1754,9 @@ NOT_EXHAUSTED:
 	ANDIM	BAT_EXHAUSTED,	1110B	;清电池电量已耗尽标志
 	JMP	BAT_STATE_CHK_END
 
-BAT_SHORT:
+BSC_BAT_SHORT:
 	ORIM	ALARM_STATE,	0001B	;置电池故障标志位
+	ORIM	BAT_SHORT,	0001B	;置电池短路标志位
 	JMP	BAT_STATE_CHK_END
 
 BAT_STATE_CHK_END:
@@ -1731,6 +1781,8 @@ PROCESS_LIGHT:
 
 	BNC	ERROR_LIGHT		;光源故障
 
+	LDA	SELF_STATE
+	BNZ	PROCESS_LIGHT_END
 	ANDIM	ALARM_STATE,	1101B	;清除光源故障标志位
 	JMP     PROCESS_LIGHT_END
 
@@ -1758,15 +1810,20 @@ PROCESS_LIGHT_TYPE_ON:
 
 	BNC	PLTO_SHORT		;如果检测到的电压小于0.7V，则跳转
 
+	LDA	SELF_STATE
+	BNZ	PLTO_1
 	ANDIM	ALARM_STATE,	1101B	;如果检测到的电压大于0.7V，则清除光源故障标志位
 
+PLTO_1:
 	LDI	TBR,		01H	;和2.2V (0xE1)比较
 	SUB	CHN8_FINAL_RET1,01H
 	LDI	TBR,		0EH
 	SBC	CHN8_FINAL_RET2,01H
 
 	BC	PLTO_OPEN		;如果检测到的电压大于2.2V，则跳转
-
+	
+	LDA	SELF_STATE
+	BNZ	PROCESS_LIGHT_TYPE_ON_END
 	ANDIM	ALARM_STATE,	1101B	;如果检测到的电压介于0.7V 与 2.2V 之间，则清除光源故障标志位
 	JMP	PROCESS_LIGHT_TYPE_ON_END
 
@@ -1806,8 +1863,8 @@ TYPE_ON_EMERGENCY:
 	JMP     LIGHT_STATE_CHK_END
 
 TYPE_OFF:
-	ADI	SELF_STATE,	01H	;检查是否处于主电状态
-	BA0	LIGHT_STATE_CHK_END	;处于主电状态，无需对光源进行检测
+	LDA	SELF_STATE		;检查是否处于主电状态
+	BAZ	LIGHT_STATE_CHK_END	;处于主电状态，无需对光源进行检测
 	CALL	PROCESS_LIGHT		;检测光源，并设置相应标志位
 
 LIGHT_STATE_CHK_END:
@@ -1825,6 +1882,14 @@ LIGHT_STATE_CHK_END:
 TIPS_PROCESS:
 ;红灯的处理
 RED:
+	SBI	SELF_STATE,	0001B
+	BNZ	RED_1			;如果没有停电了，则跳转
+	JMP	RED_ERROR
+
+RED_1:
+	LDA	PWMC1
+	BA0	RED_ON			;如果正在充电，则红灯亮
+
 	LDA	SELF_STATE
 	BNZ	RED_ERROR		;如果正在自检，则跳转
 
@@ -1882,6 +1947,11 @@ GREEN_3HZ:
 ;--------------------------------------------------------------------------
 ;黄灯的处理
 YELLOW:
+	SBI	SELF_STATE,	0001B
+	BNZ	ALARM_BAT		;如果没有停电了，则跳转
+	ANDIM	PORTE,		0000B	;熄灭黄灯
+	JMP	BEEP_PROCESS
+	
 ;电池充电回路故障处理
 ALARM_BAT:	
 	LDI	TBR,		0001B	;将0001B载入累加器A中
@@ -2304,6 +2374,16 @@ DIS_PWM0_DLY_20MS_END:
 ;***********************************************************
 SELF_CHK_PROCESS:
 
+	LDA	ALARM_STATE
+	BAZ	SCP_START
+
+	CALL	DIS_PWM0_DLY_20MS	;如果在应急时，发生任何故障，则关闭PWM0输出
+	LDI	GREEN_FLASH,	00H	;绿灯停止闪烁
+	ANDIM	ALREADY_ENTER,	1011B	;清在手动月检状态下已经开始应急的标志位
+	CALL	SET_EMER_DURATION	;根据"本次应急时长"计数器，重置"本次应急时长"标志位	
+	JMP	SELF_CHK_PROCESS_END
+	
+SCP_START:
 	SBI	SELF_STATE,	0001B
 	BAZ	SELF_CHK_PROCESS_END	;如果停电，则跳转
 
@@ -2404,6 +2484,13 @@ SCP_MONTH_ALARM_CHK:
 	
 SCP_MONTH_HAVE_ALARM:
 	ORIM	FIXED_SELF_CHK,	0001B	;在月检状态下，检测到故障，则置因故障不能退出自检状态标志位
+
+	;CALL	DIS_PWM0_DLY_20MS	;关闭PWM0输出
+	ANDIM	GREEN_FLASH,	1101B	;让绿灯停止以1HZ的频率闪烁	
+	ANDIM	ALREADY_ENTER,	1011B	;清在手动月检状态下已经开始应急的标志位
+
+	CALL	SET_EMER_DURATION	;根据"本次应急时长"计数器，重置"本次应急时长"标志位
+	
 	JMP	SELF_CHK_PROCESS_END
 
 ;---------------------------------------------------------------------------
