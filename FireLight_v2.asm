@@ -1098,11 +1098,11 @@ REGISTER_INITIAL:
 	LDI	PWMP00,		0DH	;周期为125个PWM0 Clock
 	LDI	PWMP01,		07H	
 	LDI	PWMD00,		00H	;无微调
-	LDI	PWMD01,		0EH	;占空比为50%
-	LDI	PWMD02,		03H	
+	LDI	PWMD01,		0DH	;占空比为3/4
+	LDI	PWMD02,		05H	
 
-	LDI	PWMC1,		0000B	;PWM0 Clock = tosc = 4M
-	LDI	PWMP10,		0DH	;周期为125个PWM0 Clock
+	LDI	PWMC1,		0000B	;PWM1 Clock = tosc = 4M
+	LDI	PWMP10,		0DH	;周期为125个PWM1 Clock
 	LDI	PWMP11,		07H	
 	LDI	PWMD10,		00H	;无微调
 	LDI	PWMD11,		0EH	;占空比为50%
@@ -1410,7 +1410,7 @@ CHARGE_BAT_CTRL_END:
 
 ;***********************************************************
 ;打开应急放电
-;通过PWM0输出频率为32KHZ，占空比为50%的方波，以此驱动应急电路
+;通过PWM0输出频率为32KHZ，占空比为3/4的方波，以此驱动应急电路
 ;置停电标志位
 ;置进入应急放电标志位
 ;应急时长清零
@@ -1429,8 +1429,8 @@ EMERGENCY_ENABLE:
 	LDI	PWMP00,		0DH	;周期为125个PWM0 Clock
 	LDI	PWMP01,		07H	
 	LDI	PWMD00,		00H	;无微调
-	LDI	PWMD01,		0EH	;占空比为50%
-	LDI	PWMD02,		03H
+	LDI	PWMD01,		0DH	;占空比为3/4
+	LDI	PWMD02,		05H
 
 	LDI	TBR,		0101B
 	AND	LIGHT_TYPE
