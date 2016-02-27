@@ -33,7 +33,7 @@ PORTD		EQU	0BH		;PortD 数据寄存器
 PORTE		EQU	0CH		;PortE 数据寄存器
 
 					;0DH Reserved
-				
+
 TBR		EQU	0EH		;查表寄存器
 INX		EQU	0FH		;间接寻址伪索引寄存器
 DPL		EQU	10H		;INX数据指针低4位
@@ -402,6 +402,12 @@ J_168MS:
 
 	ORIM	F_168MS,	0111B	;设置 "168ms 到"标志，1)bit0供翻转LED用，2)bit1供按键检测用，3)bit2供通过按键退出月检可年检用
 
+	LDA	ADCCFG
+	BA3	J168NORMAL		;如果当前A/D 处于开启状态，则跳转
+	
+	ORIM 	ADCCFG,		1000B 	;启动A/D 转换
+
+J168NORMAL:
 	ADI	BEEP_BTN,	0001B
 	BA0	J_1S
 	ANDIM	BEEP_BTN,	1110B	;清按键蜂鸣标志位
@@ -897,7 +903,12 @@ NEXT_CHN:
 
 NEXT_CHN0:
 	LDI	ADCCHN,		00H	;设定为CHN0
-	JMP 	ADC_ISP_END
+
+	LDA	DET0_CT
+	BNZ	ADC_ISP_END		;如果DET0_CT不等于0，则继续下一次的采样
+
+	ANDIM	ADCCFG,		0111B	;如果DET0_CT等于0，则关闭A/D 转换。
+	JMP	ADC_ISP_END
 
 NEXT_CHN1:
 	LDI	ADCCHN,		01H	;设定为CHN1
