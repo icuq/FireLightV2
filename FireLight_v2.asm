@@ -169,6 +169,10 @@ CNT2_EMERGENCY	EQU	50H
 CMP_EXIT_EMER0	EQU	51H		;检测到电池电压小于此数值时(0.96V -> 0x62)，应该关闭应急放电功能
 CMP_EXIT_EMER1	EQU	52H
 
+
+CNT0_200MS	EQU	55H		;用于定时200MS,供打开AD使用
+CNT1_200MS	EQU	56H
+
 BAT_STATE	EQU	59H		;bit0 = 0, 表示充电回路未开路；bit0 = 1, 表示充电回路开路
 					;bit1 = 0, 表示电池未充满；bit1 = 1, 表示电池已充满
 					;bit2 = 0, 表示电池还不需要充电；bit2 = 1, 表示电池需要充电
@@ -391,6 +395,20 @@ TIMER0_ISP:
 	STA 	AC_BAK,		00H 	;备份AC 值
 	ANDIM 	IRQ,		1011B 	;清TIMER0 中断请求标志
 
+J_200MS:
+	SBIM	CNT0_200MS,	01H
+	LDI	TBR,		00H
+	SBCM	CNT1_200MS
+	BC	J_168MS
+
+	LDI	CNT0_200MS,	08H
+	LDI	CNT1_200MS,	01H	;8MS * 25 = 200MS
+
+	LDA	ADCCFG
+	BA3	J_168MS			;如果当前A/D 处于开启状态，则跳转
+	
+	ORIM 	ADCCFG,		1000B 	;启动A/D 转换
+	
 J_168MS:
 	SBIM	CNT0_168MS,	01H
 	LDI	TBR,		00H
@@ -402,12 +420,6 @@ J_168MS:
 
 	ORIM	F_168MS,	0111B	;设置 "168ms 到"标志，1)bit0供翻转LED用，2)bit1供按键检测用，3)bit2供通过按键退出月检可年检用
 
-	LDA	ADCCFG
-	BA3	J168NORMAL		;如果当前A/D 处于开启状态，则跳转
-	
-	ORIM 	ADCCFG,		1000B 	;启动A/D 转换
-
-J168NORMAL:
 	ADI	BEEP_BTN,	0001B
 	BA0	J_1S
 	ANDIM	BEEP_BTN,	1110B	;清按键蜂鸣标志位
@@ -1027,6 +1039,9 @@ REGISTER_INITIAL:
 
 	LDI	CNT0_168MS,	04H	;定时168ms
 	LDI	CNT1_168MS,	01H	;
+
+	LDI	CNT0_200MS,	08H	;定时200MS
+	LDI	CNT1_200MS,	01H	;
 
 	LDI 	CNT0_8MS,	0CH 	;定时1s
 	LDI 	CNT1_8MS,	07H 	;定时1s
