@@ -169,6 +169,8 @@ CNT2_EMERGENCY	EQU	50H
 CMP_EXIT_EMER0	EQU	51H		;检测到电池电压小于此数值时(0.96V -> 0x62)，应该关闭应急放电功能
 CMP_EXIT_EMER1	EQU	52H
 
+CNTNMP0_8MS 	EQU 	53H	 	;CNTNMP1_8MS, CNTNMP0_8MS组成的8bit数据达到125时，即Timer0产生125次中断后，表示1S计时已到
+CNTNMP1_8MS 	EQU 	54H 		;所以，初始化CNTNMP1_8MS=07H, CNTNMP0_8MS=0DH
 
 CNT0_200MS	EQU	55H		;用于定时200MS,供打开AD使用
 CNT1_200MS	EQU	56H
@@ -413,7 +415,7 @@ J_168MS:
 	SBIM	CNT0_168MS,	01H
 	LDI	TBR,		00H
 	SBCM	CNT1_168MS
-	BC	J_1S
+	BC	J_NOMAINPW_1S
 
 	LDI	CNT0_168MS,	04H	;8ms * 21 = 168ms
 	LDI	CNT1_168MS,	01H
@@ -424,6 +426,20 @@ J_168MS:
 	BA0	J_1S
 	ANDIM	BEEP_BTN,	1110B	;清按键蜂鸣标志位
 	ANDIM	TCTL1,		0111B	;如果按键蜂鸣标志位为1，则关闭蜂鸣器
+	
+J_NOMAINPW_1S:
+        LDA	SELF_STATE		;检查是否处于主电状态
+	BAZ	J_1S	                ;处于主电状态，无需对光源进行检测        
+
+	SBIM 	CNTNMP0_8MS,	01H	;每次Timer0中断产生后，将CNTNMP0_8MS减1
+	LDI	TBR,		00H
+	SBCM	CNTNMP1_8MS		;每次CNTNMP0_8MS-1产生借位时，将CNTNMP1_8MS减1
+	BC	J_1S
+	
+	LDI 	CNTNMP0_8MS,	0CH 	;重置1s 计数器 1S = 125 * 8 MS
+	LDI 	CNTNMP1_8MS,	07H 	;重置1s 计数器
+	
+	ORIM	F_1S,		0010B	;为光源检测时当进入非主电状态后提供 "1s 到"标志，此时Bit1 = 1
 
 J_1S:	
 	SBIM 	CNT0_8MS,	01H	;每次Timer0中断产生后，将CNT0_8MS减1
@@ -1046,6 +1062,9 @@ REGISTER_INITIAL:
 	LDI 	CNT0_8MS,	0CH 	;定时1s
 	LDI 	CNT1_8MS,	07H 	;定时1s
 
+	LDI 	CNTNMP0_8MS,	0CH 	;定时1s
+	LDI 	CNTNMP1_8MS,	07H 	;定时1s
+
 	LDI	CNT0_50S,	01H	;Beep定时50s
 	LDI	CNT1_50S,	03H
 	
@@ -1630,7 +1649,10 @@ SMALL_THAN_1P396V:
 
 STOP_EMERGENCY:
 	ANDIM	ALREADY_ENTER,	1101B	;清除已经开始应急标志位
-	LDI	SELF_STATE,	0000B	;返回主电状态	
+	LDI	SELF_STATE,	0000B	;返回主电状态
+	ANDIM	F_1S,		1101B	;清除进入非主电状态后延时1s标志位
+	LDI 	CNTNMP0_8MS,	0CH 	;重置1s 计数器 1S = 125 * 8 MS
+	LDI 	CNTNMP1_8MS,	07H 	;重置1s 计数器
 	CALL	EMERGENCY_DISABLE
 	CALL	SET_EMER_DURATION	;更新本次应急时长标志位
 	JMP	EMERGENCY_CTRL_END
@@ -1885,12 +1907,22 @@ TYPE_ON:
 	JMP     LIGHT_STATE_CHK_END
 	
 TYPE_ON_EMERGENCY:
-	CALL	PROCESS_LIGHT		;检测光源，并设置相应标志位
+        LDA     F_1S                    
+        BA1     TYPE_ON_EMERGENCY_PL    ;检查进入非主电状态后，是否延时够1s
+	JMP     LIGHT_STATE_CHK_END
+
+TYPE_ON_EMERGENCY_PL:
+        CALL	PROCESS_LIGHT		;检测光源，并设置相应标志位
 	JMP     LIGHT_STATE_CHK_END
 
 TYPE_OFF:
-	LDA	SELF_STATE		;检查是否处于主电状态
+        LDA	SELF_STATE		;检查是否处于主电状态
 	BAZ	LIGHT_STATE_CHK_END	;处于主电状态，无需对光源进行检测
+	LDA	F_1S
+        BA1     TYPE_OFF_PL             ;检查进入非主电状态后，是否延时够1s
+        JMP     LIGHT_STATE_CHK_END
+
+TYPE_OFF_PL:	
 	CALL	PROCESS_LIGHT		;检测光源，并设置相应标志位
 
 LIGHT_STATE_CHK_END:
@@ -2285,6 +2317,9 @@ SCS_LESS_3S:
 
 SCS_EXIT_SELF_CHK:
 	LDI	SELF_STATE,	00H	;如果按键被松开，并且系统处于月检或是年检或是模拟停电状态，则退出
+	ANDIM	F_1S,		1101B	;清除进入非主电状态后延时1s标志位
+	LDI 	CNTNMP0_8MS,	0CH 	;重置1s 计数器 1S = 125 * 8 MS
+	LDI 	CNTNMP1_8MS,	07H 	;重置1s 计数器
 	LDI	GREEN_FLASH,	00H	;月检或是年检状态，停止绿灯的闪烁
 	LDI	ALARM_STATE,	00H	;清除所有的故障标志位
 	LDI	FIXED_SELF_CHK,	00H	;清 因故障不能退出自检状态标志位
@@ -2492,6 +2527,9 @@ SCP_MONTH_1S:
 SCP_MONTH_WHILE:			;如果在月检状态下，检测到故障，则关闭应急，等待主电源恢复
 	CALL	DIS_PWM0_DLY_20MS	;关闭PWM0输出
 	LDI	SELF_STATE,	0000B	;清月检标志位
+	ANDIM	F_1S,		1101B	;清除进入非主电状态后延时1s标志位
+	LDI 	CNTNMP0_8MS,	0CH 	;重置1s 计数器 1S = 125 * 8 MS
+	LDI 	CNTNMP1_8MS,	07H 	;重置1s 计数器
 	ANDIM	GREEN_FLASH,	1101B	;让绿灯停止以1HZ的频率闪烁	
 	ANDIM	ALREADY_ENTER,	1011B	;清在手动月检状态下已经开始应急的标志位
 
@@ -2527,6 +2565,9 @@ SCP_ARRIVE_120S:
 
 	CALL	DIS_PWM0_DLY_20MS	;关闭PWM0输出
 	LDI	SELF_STATE,	0000B	;清月检标志位
+	ANDIM	F_1S,		1101B	;清除进入非主电状态后延时1s标志位
+	LDI 	CNTNMP0_8MS,	0CH 	;重置1s 计数器 1S = 125 * 8 MS
+	LDI 	CNTNMP1_8MS,	07H 	;重置1s 计数器
 	ANDIM	GREEN_FLASH,	1101B	;让绿灯停止以1HZ的频率闪烁	
 	ANDIM	ALREADY_ENTER,	1011B	;清在手动月检状态下已经开始应急的标志位
 
@@ -2558,6 +2599,9 @@ SCP_BAT_EXHAUSTED_CHK:
 	
 	CALL	DIS_PWM0_DLY_20MS	;关闭PWM0输出
 	LDI	SELF_STATE,	0000B	;清月检标志位
+	ANDIM	F_1S,		1101B	;清除进入非主电状态后延时1s标志位
+	LDI 	CNTNMP0_8MS,	0CH 	;重置1s 计数器 1S = 125 * 8 MS
+	LDI 	CNTNMP1_8MS,	07H 	;重置1s 计数器
 	ANDIM	GREEN_FLASH,	1101B	;让绿灯停止以1HZ的频率闪烁	
 	ANDIM	ALREADY_ENTER,	1011B	;清在手动月检状态下已经开始应急的标志位
 	CALL	SET_EMER_DURATION	;根据应急时长计数器，重置"本次应急时长"标志位
@@ -2620,6 +2664,9 @@ SCP_YEAR_BAT_CHK:
 SCP_YEAR_WHILE:				;如果在年检状态下，检测到故障，则关闭应急，等待主电源恢复
 	CALL	DIS_PWM0_DLY_20MS	;关闭PWM0输出
 	LDI	SELF_STATE,	0000B	;清年检标志位
+	ANDIM	F_1S,		1101B	;清除进入非主电状态后延时1s标志位
+	LDI 	CNTNMP0_8MS,	0CH 	;重置1s 计数器 1S = 125 * 8 MS
+	LDI 	CNTNMP1_8MS,	07H 	;重置1s 计数器
 	ANDIM	GREEN_FLASH,	1011B	;让绿灯停止以3HZ的频率闪烁	
 	ANDIM	ALREADY_ENTER,	0111B	;清在年检状态下已经开始应急的标志位
 
