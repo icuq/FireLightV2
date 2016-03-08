@@ -423,7 +423,7 @@ J_168MS:
 	ORIM	F_168MS,	0111B	;设置 "168ms 到"标志，1)bit0供翻转LED用，2)bit1供按键检测用，3)bit2供通过按键退出月检可年检用
 
 	ADI	BEEP_BTN,	0001B
-	BA0	J_1S
+	BA0	J_NOMAINPW_1S
 	ANDIM	BEEP_BTN,	1110B	;清按键蜂鸣标志位
 	ANDIM	TCTL1,		0111B	;如果按键蜂鸣标志位为1，则关闭蜂鸣器
 	
@@ -2190,6 +2190,8 @@ KEY_PRESSED:
 	JMP	KEY_CMP
 	
 BUTTON_BEEP_START:
+        LDA	ALREADY_ENTER		;Fix bug 960246
+	BA1	KEY_CMP 		;如果已经进入应急放电状态，则跳转，不触发蜂鸣器蜂鸣
 	ORIM	BEEP_BTN,	0001B	;置按键蜂鸣标志位
 	ORIM	TCTL1,		1000B	;让蜂鸣器开始蜂鸣
 
