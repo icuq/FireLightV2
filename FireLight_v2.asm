@@ -175,6 +175,8 @@ CNTNMP1_8MS 	EQU 	54H 		;所以，初始化CNTNMP1_8MS=07H, CNTNMP0_8MS=0DH
 CNT0_200MS	EQU	55H		;用于定时200MS,供打开AD使用
 CNT1_200MS	EQU	56H
 
+CNT_5_200MS	EQU	57H		;用于定时5个200MS，即1秒
+
 BAT_STATE	EQU	59H		;bit0 = 0, 表示充电回路未开路；bit0 = 1, 表示充电回路开路
 					;bit1 = 0, 表示电池未充满；bit1 = 1, 表示电池已充满
 					;bit2 = 0, 表示电池还不需要充电；bit2 = 1, 表示电池需要充电
@@ -406,10 +408,22 @@ J_200MS:
 	LDI	CNT0_200MS,	08H
 	LDI	CNT1_200MS,	01H	;8MS * 25 = 200MS
 
+	;如果处于初始化阶段，每200MS启动一次AD
+	;如果已经完成了初始化，则每1S启动一次AD
+	ADI	FLAG_TYPE,	0001B
+	BA0	J_200MS_OPT_AD		;若FLAG_TYPE的bit0=0，则表示还未完成灯具类型选择，则每200MS启动一次AD。
+
+	SBIM	CNT_5_200MS,	01H	;如果FLAG_TYPE的bit0=1，则表示已经完成灯具类型选择，为了进一步减小功耗，则此时每1S启动一次AD.
+	BC	J_168MS
+
+	LDI	CNT_5_200MS,	04H
+	
+J_200MS_OPT_AD:
 	LDA	ADCCFG
 	BA3	J_168MS			;如果当前A/D 处于开启状态，则跳转
 	
 	ORIM 	ADCCFG,		1000B 	;启动A/D 转换
+
 	
 J_168MS:
 	SBIM	CNT0_168MS,	01H
@@ -1058,6 +1072,8 @@ REGISTER_INITIAL:
 
 	LDI	CNT0_200MS,	08H	;定时200MS
 	LDI	CNT1_200MS,	01H	;
+
+	LDI	CNT_5_200MS,	04H
 
 	LDI 	CNT0_8MS,	0CH 	;定时1s
 	LDI 	CNT1_8MS,	07H 	;定时1s
