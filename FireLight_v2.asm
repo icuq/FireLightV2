@@ -1976,6 +1976,9 @@ RED:
 	JMP	RED_ERROR
 
 RED_1:
+	LDA	BAT_STATE		;电池充满后，熄灭红灯
+	BA1	RED_ERROR
+
 	LDA	PWMC1
 	BA0	RED_ON			;如果正在充电，则红灯亮
 
