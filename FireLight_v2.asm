@@ -1395,12 +1395,13 @@ LI_NI_BAT_SHORT_END:
 ;***********************************************************
 CHARGE_BAT_CTRL:
 	SBI	SELF_STATE,	0001B
-	BNZ	SBC_1			;如果没有停电，则跳转
+	BNZ	SBC_2			;如果没有停电，则跳转
 
 POBO:	
 	CALL	PWR_OFF_BAT_OPEN
 	JMP	CHARGE_BAT_CTRL_END	
 
+SBC_2:
 	LDA	BAT_STATE
 	BA0	POBO			;电池开路了，处理方法同停电一样
 
