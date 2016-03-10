@@ -110,6 +110,8 @@ ALREADY_ENTER	EQU	33H		;bit 0:  0 - 当前并未开始充电,      1 - 当前已经开始充电
 				
 ; 用于TIMER 定时
 F_1S		EQU	34H		;bit0 = 1, 1s 到，用于计时应急时长
+					;bit1 = 1, 用于进入非主电后的1s计时
+					;bit2 = 1, 1s 到，用于1s检测一次电池状态
 					
 F_TIME 		EQU 	35H 		;bit0 = 1, 1秒到; 
 					;bit1 = 1, 1月到; 
@@ -176,6 +178,8 @@ CNT0_200MS	EQU	55H		;用于定时200MS,供打开AD使用
 CNT1_200MS	EQU	56H
 
 CNT_5_200MS	EQU	57H		;用于定时5个200MS，即1秒
+
+CNT_BAT_OPEN	EQU	58H		;用于记录连续检测到电池开路的次数
 
 BAT_STATE	EQU	59H		;bit0 = 0, 表示充电回路未开路；bit0 = 1, 表示充电回路开路
 					;bit1 = 0, 表示电池未充满；bit1 = 1, 表示电池已充满
@@ -465,7 +469,7 @@ J_1S:
 	LDI 	CNT1_8MS,	07H 	;重置1s 计数器
 	
 	ORIM 	F_TIME,		0001B 	;设置 "1s 到"标志
-	ORIM	F_1S,		0001B	;为应急功能提供 "1s 到"标志
+	ORIM	F_1S,		0101B	;为应急功能提供 "1s 到"标志，同时为电池状态检测提供 "1s 到"标志
 	ORIM	FLAG_SIMU_EMER,	0010B	;为手动自检提供 "1s 到"标志
 
 BEEP_TIMER:
@@ -1740,7 +1744,10 @@ EMERGENCY_CTRL_END:
 ;电池电压小于( 0.3V -> 0x1E)时，视为电池充电回路短路
 ;***********************************************************
 BAT_STATE_CHK:
-
+	ADI	F_1S,		0100B
+	BA2	BAT_STATE_CHK_END	;还未到1秒，则跳转
+	ANDIM	F_1S,		1011B	;清1秒标志位
+	
 	ORIM	FLAG_OCCUPIED,	0010B	;锁定通道1最终结果
 
 	LDI	TBR,		0FH	;将电池电压和1.56V (0x9F)比较，如果大于1.56V，则判定为电池充电回路开路
@@ -1750,6 +1757,7 @@ BAT_STATE_CHK:
 
 	BC	BAT_OPEN		;AD转换结果大于1.56V，电池开路
 	ANDIM	BAT_STATE,	1110B	;清除充电回路开路标志位
+	LDI	CNT_BAT_OPEN,	00H	;清零计数器
 
 	LDA	SELF_STATE
 	BNZ	BSC_1
@@ -1805,6 +1813,13 @@ BSC_1:
 ;---------------------------------------------------------------------------
 
 BAT_OPEN:
+	SBI	CNT_BAT_OPEN,	03H
+	BC	SET_BAT_OPEN		;防抖，连续3次检测到电池开路，才置电池开路标志位
+
+	ADIM	CNT_BAT_OPEN,	01H
+	JMP	BAT_STATE_CHK_END
+	
+SET_BAT_OPEN:	
 	ORIM	BAT_STATE,	0001B	;置充电回路开路标志位
 	ORIM	ALARM_STATE,	0001B	;置充电回路开路故障标志位
 	JMP	BAT_STATE_CHK_END
