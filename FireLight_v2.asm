@@ -136,7 +136,7 @@ TEMP_SUM_CY	EQU	3FH		;AD子程序参数临时变量
 FLAG_OCCUPIED	EQU	40H		;bit0/1/2/3 = 1时分别表示CHN0、1、6、7的转换结果(CHN0_FINAL_RET1等)正被前台使用,
 					;此时ADC中断不能修改这些数据。	
 
-FLAG_TYPE	EQU	41H		;bit0 = 1表示已经完成灯具类型选择(PORTB.3/AN7),此位为1后不再需要对AN7进行AD采样
+FLAG_TYPE	EQU	41H		;bit0 = 1表示已经完成灯具类型选择(PORTB.3/AN7)
 
 
 CMP_MIN_PWR0	EQU	42H		;上电自检时，灯具电源最小电压值.(1.396V -> 0x23B ->(丢弃最低2位) 0x8E)
@@ -263,7 +263,11 @@ PRESS_DURATION	EQU	7BH		;按键被按下持续时长标志
 					;bit2 = 1;  被按下时长大于5秒，小于7秒
 					;bit3 = 1;  被按下时长大于7秒
 
+CMP_TYPE30	EQU	7CH		;灯具类型门限3
+CMP_TYPE31	EQU	7DH		;
 
+FLAG_OCCUPIED_2	EQU	7EH		;bit0 = 1时表示CHN8的转换结果(CHN8_FINAL_RET1等)正被前台使用,
+					;此时ADC中断不能修改这些数据。	
 
 ;Bank1(以下寄存器真实地址应加上80H)
 ;------------------------------------------------------------------
@@ -933,18 +937,23 @@ CHN8_VOL_14:
 	JMP 	NEXT_CHN	
 ;----------------------------------------------------------------
 
-;----------------------------------------------------------------	
+;----------------------------------------------------------------
+;各种情况下的通道转换顺序
+;上电时  0 - 1 - 6 - 7 ...
+;在光源与电池类型确定之后:
+;常亮型  0 - 1 - 6 - 7 - 8 ...
+;常灭型  0 - 1 - 6 - 7 ...
 NEXT_CHN:
 	LDA	ADCCHN
-	BAZ	NEXT_CHN1
+	BAZ	NEXT_CHN1		;设定下一次转换的通道为CHN1
 	SBI	ADCCHN,		01H
-	BAZ	NEXT_CHN6
+	BAZ	NEXT_CHN6		;设定下一次转换的通道为CHN6
 	SBI	ADCCHN,		06H
-	BAZ	NEXT_CHN0_7_8
+	BAZ	NEXT_CHN7		;设定下一次转换的通道为CHN7
 	SBI	ADCCHN,		07H
-	BAZ	NEXT_CHN0
+	BAZ	NEXT_CHN0_8		;下一次转换的通道可能为CHN0或CHN8
 	SBI	ADCCHN,		08H
-	BAZ	NEXT_CHN0
+	BAZ	NEXT_CHN0		;设定下一次转换的通道为CHN0
 	JMP 	ADC_ISP_END		;不可能执行这一句
 
 NEXT_CHN0:
@@ -964,19 +973,19 @@ NEXT_CHN6:
 	LDI 	ADCCHN,		06H 	;设定为CHN6
 	JMP	ADC_ISP_END
 
-NEXT_CHN0_7_8:
+NEXT_CHN7:	
+	LDI	ADCCHN,		07H	;设定为CHN7
+	JMP	ADC_ISP_END
+
+NEXT_CHN0_8:
 	ADI	FLAG_TYPE,	0001B
-	BA0	NEXT_CHN7		;若FLAG_TYPE的bit0=0，则表示还未完成灯具类型选择，此时仍需要对AN7进行采样。
+	BA0	NEXT_CHN0		;若FLAG_TYPE的bit0=0，则表示还未完成灯具类型选择，则下一通道转为通道0
 
 	LDI	TBR,		0101B
 	AND	LIGHT_TYPE
 	BNZ	NEXT_CHN8		;如果为常亮型，则跳转，设定下一通道为通道8
 
-	JMP	NEXT_CHN0		;如果FLAG_TYPE的bit0=1，并且灯具为常灭型，则下一通道转为通道0
-
-NEXT_CHN7:	
-	LDI	ADCCHN,		07H	;设定为CHN7
-	JMP	ADC_ISP_END
+	JMP	NEXT_CHN0		;如果灯具为常灭型，则下一通道转为通道0	
 
 NEXT_CHN8:
 	LDI	ADCCHN,		08H	;设定为CHN8
@@ -1017,6 +1026,8 @@ MAIN_LOOP:
 	CALL	BAT_STATE_CHK		;[电池状态]  检测电池状态，并置相应标志位
 	CALL	LIGHT_STATE_CHK		;[光源状态]  光源状态检测，并置相应标志位
 	CALL	TIPS_PROCESS		;[声光提示]  处理LED与蜂鸣器
+
+	CALL	PIN9_CHK		;[PIN9检测]  在应急状态下，如果PIN9电压大于2.0V，则停止应急
 
 	JMP	MAIN_LOOP
 
@@ -1184,14 +1195,17 @@ REGISTER_INITIAL:
 
 
 	
-	LDI	CMP_TYPE00,	0DH	;灯具类型门限0   (0.6V -> 0x3D)
+	LDI	CMP_TYPE00,	03H	;灯具类型门限0   (0.5V -> 0x33)
 	LDI	CMP_TYPE01,	03H
 
-	LDI	CMP_TYPE10,	0AH	;灯具类型门限1   (1.2V -> 0x7A)
-	LDI	CMP_TYPE11,	07H
+	LDI	CMP_TYPE10,	06H	;灯具类型门限1   (1.0V -> 0x66)
+	LDI	CMP_TYPE11,	06H
 
-	LDI	CMP_TYPE20,	08H	;灯具类型门限2   (1.8V -> 0xB8)
-	LDI	CMP_TYPE21,	0BH
+	LDI	CMP_TYPE20,	09H	;灯具类型门限2   (1.5V -> 0x99)
+	LDI	CMP_TYPE21,	09H
+
+	LDI	CMP_TYPE30,	0CH	;灯具类型门限3   (2.0V -> 0x99)
+	LDI	CMP_TYPE31,	0CH
 
 	LDI	CNT0_CHARGE,	0FH	;还应充电多长时间，初始值为20小时，即20 * 60 =1200分钟(0x4B0)
 	LDI	CNT1_CHARGE,	0AH
@@ -1237,6 +1251,7 @@ WAIT_PWR_NML:
 	BC	WAIT_AD_RESULT		;如果未达到最小上电电压，则一直等待电压升至最小上电电压之上。
 
 PRE_START_PWR_CHK_END:
+	LDI	SELF_STATE,	00H
 	CALL	CHARGE_BAT_ENABLE	;上电后，即开始对电池进行充电
 	RTNI
 
@@ -1255,21 +1270,21 @@ PRE_START_TYPE_CHK:
 	SUB	CMP_TYPE00
 	LDA	CHN7_FINAL_RET2,01H
 	SBC	CMP_TYPE01
-	BC	LI_ON			;如果检测到的电压小于0.6V，则灯具为锂电池，常亮型
+	BC	LI_ON			;如果检测到的电压小于0.5V，则灯具为锂电池，常亮型
 
 	LDA	CHN7_FINAL_RET1,01H	;和门限1比较
 	SUB	CMP_TYPE10
 	LDA	CHN7_FINAL_RET2,01H
 	SBC	CMP_TYPE11
-	BC	LI_OFF			;如果检测到的电压小于1.2V，则灯具为锂电池，常灭型
+	BC	LI_OFF			;如果检测到的电压小于1.0V，则灯具为锂电池，常灭型
 
 	LDA	CHN7_FINAL_RET1,01H	;和门限2比较
 	SUB	CMP_TYPE20
 	LDA	CHN7_FINAL_RET2,01H
 	SBC	CMP_TYPE21
-	BC	NI_ON			;如果检测到的电压小于1.8V，则灯具为镍镉电池，常亮型
-
-NI_OFF:					;如果检测到的电压大于1.8V，则灯具为镍镉电池，常灭型
+	BC	NI_ON			;如果检测到的电压小于1.5V，则灯具为镍镉电池，常亮型
+	
+NI_OFF:					;如果检测到的电压大于1.5V，则灯具为镍镉电池，常灭型
 	LDI	LIGHT_TYPE,	1000B
 	JMP	PRE_START_TYPE_CHK_END
 	
@@ -1881,7 +1896,7 @@ PROCESS_LIGHT_END:
 ;***********************************************************
 PROCESS_LIGHT_TYPE_ON:
 
-	ORIM	FLAG_OCCUPIED,	1000B	;锁定通道8最终结果，由于通道7与通道8不可能同时存在，故两者共用一个BIT来作标志位
+	ORIM	FLAG_OCCUPIED_2,0001B	;锁定通道8最终结果
 
 	LDI	TBR,		07H	;和0.7V (0x47)比较
 	SUB	CHN8_FINAL_RET1,01H
@@ -1912,7 +1927,7 @@ PLTO_SHORT:
 	ORIM	ALARM_STATE,	0010B	;置光源故障标志位
 	
 PROCESS_LIGHT_TYPE_ON_END:
-	ANDIM	FLAG_OCCUPIED,	0111B	;释放对通道8最终结果的锁定
+	ANDIM	FLAG_OCCUPIED_2,1110B	;释放对通道8最终结果的锁定
 	RTNI
 
 ;***********************************************************
@@ -2157,6 +2172,32 @@ TIPS_PROCESS_END:
 	ANDIM	F_168MS,	1110B	;清除168MS标志
 	RTNI
 
+
+;***********************************************************
+;应急状态时，监测9脚电压，若发现大于2.0V，则停止应急
+;这是什么鬼需求???
+;***********************************************************
+PIN9_CHK:
+	LDA	SELF_STATE
+	BAZ	PIN9_CHK_END		;当前未处于应急状态，则跳转
+
+	ORIM	FLAG_OCCUPIED,1000B	;锁定通道7最终结果
+
+	LDA	CHN7_FINAL_RET1,01H	;和门限3(2.0V)比较
+	SUB	CMP_TYPE30
+	LDA	CHN7_FINAL_RET2,01H
+	SBC	CMP_TYPE31
+	ANDIM	FLAG_OCCUPIED,0111B	;释放对通道7最终结果的锁定
+
+	BC	PIN9_CHK_END		;如果检测到的电压小于2.0V，则跳转
+
+	ANDIM	ALREADY_ENTER,	1101B	;清"已经开始停电应急"标志位
+	CALL	EMERGENCY_DISABLE	;关闭应急
+	CALL	SET_EMER_DURATION	;更新本次应急时长标志位
+	CALL	PRE_START_PWR_CHK	;等待主电源恢复正常
+	
+PIN9_CHK_END:
+	RTNI
 
 
 ;***********************************************************
@@ -3937,8 +3978,8 @@ CAL_CHN7_ADCDATA_END:
 ; 描述: 防脉冲平均滤波法（N=4，去一个最大值和一个最小值，剩下两个求平均值）
 ;*******************************************
 CAL_CHN8_ADCDATA:
-	ADI	FLAG_OCCUPIED,		1000B
-	BA3	CAL_CHN8_AD_MIN01
+	ADI	FLAG_OCCUPIED_2,	0001B
+	BA0	CAL_CHN8_AD_MIN01
 	JMP	CAL_CHN8_ADCDATA_END		;正在使用转换结果
 
 ;----------------------------
