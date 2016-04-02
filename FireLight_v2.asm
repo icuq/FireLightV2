@@ -268,6 +268,8 @@ CMP_TYPE31	EQU	7DH		;
 
 FLAG_OCCUPIED_2	EQU	7EH		;bit0 = 1时表示CHN8的转换结果(CHN8_FINAL_RET1等)正被前台使用,
 					;此时ADC中断不能修改这些数据。	
+CNT_BAT_EXH1    EQU     7FH             ;用于记录在电池状态检测子程序中(BAT_STATE_CHK)
+					;连续检测到电池电量耗尽的次数
 
 ;Bank1(以下寄存器真实地址应加上80H)
 ;------------------------------------------------------------------
@@ -384,6 +386,10 @@ CHN8_FINAL_RET1	EQU	4DH		;
 CHN8_FINAL_RET2	EQU	4EH		;
 
 DET8_CT		EQU	4FH		;ADC 通道8 转换结果个数
+
+;------------------------------------------------------------------
+CNT_BAT_EXH2    EQU     50H             ;用于记录在应急放电控制子程序中(EMERGENCY_CTRL)
+					;连续检测到电池电量耗尽的次数
 
 ;*****************************************************
 ;程序
@@ -1685,7 +1691,7 @@ SMALL_THAN_1P396V:
 
 STOP_EMERGENCY:
 	ANDIM	ALREADY_ENTER,	1101B	;清除已经开始应急标志位
-	LDI	SELF_STATE,	0000B	;返回主电状态
+	LDI	SELF_STATE,	0000B	;清自检状态标志位，表示为自动模式主电状态
 	ANDIM	F_1S,		1101B	;清除进入非主电状态后延时1s标志位
 	LDI 	CNTNMP0_8MS,	0CH 	;重置1s 计数器 1S = 125 * 8 MS
 	LDI 	CNTNMP1_8MS,	07H 	;重置1s 计数器
@@ -1729,16 +1735,27 @@ EMERGENCY_BATTERY:			;检查电池是否已经耗尽
 	ANDIM	FLAG_OCCUPIED,	1101B	;释放对通道1最终结果的锁定
 
 	BNC	EMERGENCY_ALARM_CHK	;如果>0.96V，则跳转
-	JMP	WAIT_PWR_RESUME		;
 
-EMERGENCY_ALARM_CHK:
-	LDA	ALARM_STATE
-	BAZ	EMERGENCY_CTRL_END	;如果没有任何故障，则跳转
+	LDI	TBR,		03H	;CNT_BAT_EXH2 - 3 -> A
+	SUB	CNT_BAT_EXH2,	01H
+	BC 	WAIT_PWR_RESUME		;#965236# 应急BUG
+	                                ;防抖，连续3次检测到电池电量耗尽，才置电池电量耗尽标志位
+	LDI	TBR,		01H	;次数加一
+	ADDM	CNT_BAT_EXH2,	01H
+	JMP     EMERGENCY_CTRL_END
 
-WAIT_PWR_RESUME:	
+WAIT_PWR_RESUME:
+	ANDIM	ALREADY_ENTER,	1101B	;清"已经开始停电应急"标志位
 	CALL	EMERGENCY_DISABLE	;关闭应急
 	CALL	SET_EMER_DURATION	;置放电时长标志位
 	CALL	PRE_START_PWR_CHK	;等待主电源恢复正常
+	JMP     EMERGENCY_CTRL_END
+	
+EMERGENCY_ALARM_CHK:
+	LDI	TBR,		00H
+	STA	CNT_BAT_EXH2,	01H	;清零电池电量耗尽计数器
+	LDA	ALARM_STATE
+	BNZ     STOP_EMERGENCY
 	
 EMERGENCY_CTRL_END:
 	RTNI
@@ -1811,6 +1828,14 @@ BSC_1:
 
 ;---------------------------------------------------------------------------
 
+	SBI	CNT_BAT_EXH1,    03H
+	BC	SET_BAT_EXH		;#965236# 应急BUG
+	                                ;防抖，连续3次检测到电池电量耗尽，才置电池电量耗尽标志位
+
+	ADIM	CNT_BAT_EXH1,	01H
+	JMP	BAT_STATE_CHK_END
+
+SET_BAT_EXH:
 	ORIM	BAT_EXHAUSTED,	0001B	;置电池电量已耗尽标志
 
 	LDI	TBR,		0EH	;将电池电压和0.3V (0x1E)比较，如果小于0.3V，则视为电池充电回路短路
@@ -1847,6 +1872,7 @@ BAT_FULL:
 
 NOT_EXHAUSTED:
 	ANDIM	BAT_EXHAUSTED,	1110B	;清电池电量已耗尽标志
+	LDI	CNT_BAT_EXH1,	00H	;清零电池电量耗尽计数器
 	JMP	BAT_STATE_CHK_END
 
 BSC_BAT_SHORT:
@@ -2451,7 +2477,7 @@ SELF_CHK_STATE_END:
 
 ;***********************************************************
 ;在月检、年检、模拟停电、手动月检、手动年检时，打开应急
-;1. PE.1继电器输出低电平
+;1. PD.0继电器输出低电平
 ;2. 延时20ms
 ;3. 使能PWM0
 ;***********************************************************
@@ -3055,7 +3081,7 @@ CAL_CHN0_AD_DIV:
 
 
 	;LDA	CHN0_RET0_BAK3,		01H
-	;STA	CHN0_FINAL_RET0,		01H
+	;STA	CHN0_FINAL_RET0,	01H
 	LDA	CHN0_RET1_BAK3,		01H
 	STA	CHN0_FINAL_RET1,	01H
 	LDA	CHN0_RET2_BAK3,		01H
